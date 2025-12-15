@@ -490,6 +490,8 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     // AI optimization with different strategies
     runAiOptimization: async () => {
       const { warehouse, positions, aircraftConfig, fuel, optimizationMode, route } = get();
+      const appSettings = useSettingsStore.getState().settings;
+      const optSettings = appSettings.optimization;
       
       if (warehouse.length === 0 && positions.every(p => !p.content)) {
         return;
@@ -518,15 +520,15 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       const sortedCargo = sortCargoForMode(allCargo, optimizationMode, routeStops);
       
       // CG target based on mode
-      const cgTargets = {
-        safety: 22,        // Center of envelope for max margins
-        fuel_efficiency: 28, // Aft but still safe (not at limit)
-        unload_efficiency: 24, // Slightly forward to allow door-loading
+      const cgTargets: Record<OptimizationMode, number> = {
+        safety: (aircraftConfig.cgLimits.forward + aircraftConfig.cgLimits.aft) / 2,
+        fuel_efficiency: optSettings.fuelEfficientCGTarget,
+        unload_efficiency: (aircraftConfig.cgLimits.forward + aircraftConfig.cgLimits.aft) / 2,
       };
       const targetCG = cgTargets[optimizationMode];
       
       // CG limits with safety margin
-      const safetyMargin = 2; // Stay 2% away from limits
+      const safetyMargin = optSettings.minCGMargin; // Stay away from limits (configurable)
       const safeFwdLimit = aircraftConfig.cgLimits.forward + safetyMargin;
       const safeAftLimit = aircraftConfig.cgLimits.aft - safetyMargin;
       
@@ -543,7 +545,9 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
           safeFwdLimit,
           safeAftLimit,
           optimizationMode,
-          routeStops
+          routeStops,
+          optSettings.checkLateralBalance,
+          optSettings.maxLateralImbalance
         );
         
         if (!bestPosition) {
@@ -662,7 +666,9 @@ function findBestPositionWithCGCheck(
   fwdLimit: number,
   aftLimit: number,
   mode: OptimizationMode,
-  route: { code: string }[]
+  route: { code: string }[],
+  checkLateralBalance: boolean,
+  maxLateralImbalanceKg: number
 ): LoadedPosition | null {
   // Filter to available positions that can handle this weight
   const available = positions.filter(p => 
@@ -685,7 +691,11 @@ function findBestPositionWithCGCheck(
     const newCG = testPhysics.towCG;
     
     // Check if still within limits
-    const inLimits = newCG >= fwdLimit && newCG <= aftLimit && !testPhysics.isOverweight;
+    const cgWithinLimits = newCG >= fwdLimit && newCG <= aftLimit && !testPhysics.isOverweight;
+    const lateralWithinLimits = !checkLateralBalance
+      ? true
+      : calculateMainDeckLateralDeltaKg(testPositions) <= maxLateralImbalanceKg;
+    const inLimits = cgWithinLimits && lateralWithinLimits;
     
     if (!inLimits) {
       return { pos, score: -Infinity, newCG, inLimits: false };
@@ -747,6 +757,25 @@ function findBestPositionWithCGCheck(
   }
   
   return validPositions[0].pos;
+}
+
+/**
+ * Main deck lateral imbalance metric (kg).
+ * Mirrors the UI: counts MAIN deck L/R only; treats centerline/belly as neutral.
+ */
+function calculateMainDeckLateralDeltaKg(positions: LoadedPosition[]): number {
+  let left = 0;
+  let right = 0;
+
+  for (const p of positions) {
+    if (p.deck !== 'MAIN') continue;
+    const w = p.content?.weight ?? 0;
+
+    if (p.id === 'A1' || p.id.endsWith('L')) left += w;
+    else if (p.id === 'A2' || p.id.endsWith('R')) right += w;
+  }
+
+  return Math.abs(left - right);
 }
 
 /**

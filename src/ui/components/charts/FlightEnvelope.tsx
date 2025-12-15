@@ -133,6 +133,33 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
           {isWithinLimits ? 'IN LIMITS' : 'OUT OF LIMITS'}
         </div>
       </div>
+
+      {/* Why out of limits? (high-signal explainer) */}
+      {(!towValidation.isValid || !zfwValidation.isValid) && (
+        <div className="mb-2 bg-slate-950/60 border border-slate-800 rounded-lg p-2">
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Why out of limits?
+          </div>
+          <div className="mt-1 space-y-1 text-[10px] text-slate-300">
+            {!towValidation.isValid && (
+              <div>
+                <span className="font-bold text-emerald-300">TOW (Takeoff Env.):</span>{' '}
+                <span className="text-slate-200">
+                  {(towValidation.violations.find(v => v.severity === 'error') ?? towValidation.violations[0])?.message ?? 'Out of limits'}
+                </span>
+              </div>
+            )}
+            {!zfwValidation.isValid && (
+              <div>
+                <span className="font-bold text-blue-300">ZFW (ZFW Env.):</span>{' '}
+                <span className="text-slate-200">
+                  {(zfwValidation.violations.find(v => v.severity === 'error') ?? zfwValidation.violations[0])?.message ?? 'Out of limits'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* SVG Chart */}
       <div className="flex-1 min-h-0">

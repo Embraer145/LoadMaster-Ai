@@ -265,7 +265,7 @@ export default function App() {
         {/* Row 3: Footer Controls */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Fuel & AI Controls */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col min-w-0">
             {/* Fuel Slider */}
             <div className="mb-4">
               <div className="flex justify-between items-end mb-2">
@@ -337,8 +337,8 @@ export default function App() {
           </div>
 
           {/* Weight, CG, and Lateral Balance */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg grid grid-cols-1 sm:grid-cols-3 gap-6 items-stretch">
-            <div className="flex items-center justify-center">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg grid grid-cols-1 sm:grid-cols-3 gap-6 items-stretch min-w-0">
+            <div className="flex items-center justify-center min-w-0">
               <Gauge 
                 label="GROSS WEIGHT" 
                 value={(physics.weight / 1000).toFixed(1)} 
@@ -348,7 +348,7 @@ export default function App() {
               />
             </div>
 
-            <div className="flex items-center justify-center">
+            <div className="flex items-center justify-center min-w-0">
               <Gauge 
                 label="CENTER OF GRAVITY" 
                 value={physics.towCG} 
@@ -359,11 +359,11 @@ export default function App() {
             </div>
 
             <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4 flex flex-col justify-between min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-0 truncate">
                   Main Deck L/R Balance
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
                   lateralIsOk
                     ? 'bg-slate-800/40 text-slate-300 border-slate-700'
                     : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
@@ -402,7 +402,7 @@ export default function App() {
           </div>
 
           {/* Status & Actions */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg flex flex-col justify-between">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg flex flex-col justify-between min-w-0">
             <div className={`p-3 rounded border flex items-center gap-3 ${
               physics.isOverweight || physics.isUnbalanced 
                 ? 'bg-red-900/20 border-red-900/50 text-red-400' 
