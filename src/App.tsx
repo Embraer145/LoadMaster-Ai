@@ -309,6 +309,9 @@ export default function App() {
         onTestSetup={handleTestSetup}
         onOpenSettings={() => setShowSettings(true)}
         onOpenProfile={() => setShowProfile(true)}
+        onGoHome={() => {
+          window.location.hash = '#';
+        }}
         userLabel={authStatus === 'authenticated' && currentUser ? currentUser.username : undefined}
         isSampleData={!!aircraftConfig?.isSampleData}
       />

@@ -5,7 +5,11 @@ import { HowToPage } from '@ui/pages';
 type Route = 'howto' | 'app';
 
 function getRouteFromHash(): Route {
-  return window.location.hash === '#app' ? 'app' : 'howto';
+  const h = window.location.hash;
+  if (h === '#app') return 'app';
+  // Treat empty/hash-only/hash-howto as the intro page.
+  if (h === '' || h === '#' || h === '#howto') return 'howto';
+  return 'howto';
 }
 
 export default function Root() {
