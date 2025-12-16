@@ -22,6 +22,8 @@ export default function Root() {
   return (
     <HowToPage
       onLaunchApp={() => {
+        // Update UI immediately (some environments can delay hashchange-driven re-render).
+        setRoute('app');
         window.location.hash = '#app';
       }}
     />
