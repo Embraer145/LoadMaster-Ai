@@ -191,6 +191,9 @@ function generateManifest(count: number = 35, route: RouteStop[]): CargoItem[] {
     const isMain = Math.random() > 0.3;
     const typeKey = typeKeys[Math.floor(Math.random() * typeKeys.length)];
     const dest = destinations[Math.floor(Math.random() * destinations.length)];
+
+    const uldType = pickUldType(isMain ? 'MAIN' : 'LOWER');
+    const compatibleDoors = getCompatibleDoors(uldType, isMain ? 'MAIN' : 'LOWER');
     
     manifest.push({
       id: `ULD-${Math.floor(Math.random() * 90000) + 10000}`,
@@ -205,10 +208,49 @@ function generateManifest(count: number = 35, route: RouteStop[]): CargoItem[] {
       origin: origin,
       preferredDeck: isMain ? 'MAIN' : 'LOWER',
       offloadPoint: dest.code, // Cargo gets offloaded at its destination
+      uldType,
+      compatibleDoors,
+      handlingFlags: deriveHandlingFlags(CARGO_TYPES[typeKey].code),
     });
   }
   
   return manifest;
+}
+
+function pickUldType(deck: 'MAIN' | 'LOWER'): CargoItem['uldType'] {
+  // NOTE: simplified assumptions until we load an operator-specific ULD catalog.
+  if (deck === 'MAIN') {
+    const types: CargoItem['uldType'][] = ['PMC', 'P6P'];
+    return types[Math.floor(Math.random() * types.length)];
+  }
+  const types: CargoItem['uldType'][] = ['LD3', 'LD1'];
+  return types[Math.floor(Math.random() * types.length)];
+}
+
+function getCompatibleDoors(
+  uldType: CargoItem['uldType'],
+  deck: 'MAIN' | 'LOWER'
+): CargoItem['compatibleDoors'] {
+  // NOTE: heuristic only. Real version should use door dimensions + ULD contour.
+  if (deck === 'MAIN') return ['NOSE', 'SIDE'];
+  if (uldType === 'BULK') return ['BULK'];
+  return ['LOWER_FWD', 'LOWER_AFT'];
+}
+
+function deriveHandlingFlags(code: CargoItem['type']['code']): string[] {
+  switch (code) {
+    case 'DG':
+      return ['DG'];
+    case 'PER':
+      return ['PER'];
+    case 'PRI':
+      return ['PRI'];
+    case 'MAL':
+      return ['MAIL'];
+    case 'GEN':
+    default:
+      return [];
+  }
 }
 
 /**

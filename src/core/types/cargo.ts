@@ -11,6 +11,16 @@
 export type CargoCode = 'GEN' | 'PER' | 'DG' | 'PRI' | 'MAL';
 
 /**
+ * Simplified ULD type codes (placeholder until operator/aircraft-specific ULD catalogs are loaded)
+ */
+export type UldType = 'PMC' | 'P6P' | 'LD3' | 'LD1' | 'BULK' | 'OTHER';
+
+/**
+ * Simplified door identifiers (compatibility is currently heuristic)
+ */
+export type DoorId = 'NOSE' | 'SIDE' | 'LOWER_FWD' | 'LOWER_AFT' | 'BULK';
+
+/**
  * Cargo type metadata for display
  */
 export interface CargoTypeInfo {
@@ -73,6 +83,16 @@ export interface CargoItem {
   preferredDeck: 'MAIN' | 'LOWER';
   /** Offload point - the stop where this cargo will be unloaded */
   offloadPoint: string;
+
+  /** ULD type (e.g., PMC, LD3). Used for ops metadata and door compatibility checks. */
+  uldType: UldType;
+  /**
+   * Door compatibility (heuristic for now).
+   * In a certified version, this should be derived from actual door dimensions + ULD contour.
+   */
+  compatibleDoors: DoorId[];
+  /** Operational handling flags (e.g., DG, PER, PRI). */
+  handlingFlags: string[];
 }
 
 /**

@@ -58,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   isSampleData,
 }) => {
+  const [fleet, setFleet] = useState<'B747' | 'MD11'>('B747');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [reg, setReg] = useState(flight?.registration ?? '');
   const [flightNumber, setFlightNumber] = useState(flight?.flightNumber ?? '');
@@ -73,6 +74,12 @@ export const Header: React.FC<HeaderProps> = ({
     setDestination(flight?.destination ?? '');
     setStopover(flight?.stopover ?? '');
     if (flight?.date) setDate(flight.date);
+
+    // Infer fleet from registration (so external changes like Test Data keep the UI consistent)
+    if (flight?.registration) {
+      const match = WGA_FLEET.find(a => a.reg === flight.registration);
+      setFleet(match?.fleet ?? 'B747');
+    }
   }, [flight]);
 
   const updateFlight = (updates: Partial<{
@@ -105,13 +112,17 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleTestSetup = () => {
-    setReg('N404KZ');
+    setFleet('B747');
+    setReg('N344KD');
     setFlightNumber('KD3402');
     setOrigin('LAX');
     setDestination('HKG');
     setStopover('ANC');
     onTestSetup();
   };
+
+  const fleetRegs = WGA_FLEET.filter(a => a.fleet === fleet);
+  const isFleetSupported = fleet === 'B747'; // MD-11 UI present; modeling/data integration comes next.
   
   // Get stopovers (exclude origin and destination)
   const availableStopovers = AIRPORTS.filter(a => 
@@ -131,7 +142,12 @@ export const Header: React.FC<HeaderProps> = ({
               LoadMaster <span className="text-blue-500">Pro</span>
             </h1>
             <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono uppercase tracking-widest">
-              <span>WGA OPS • B747-400F</span>
+              <span>WGA OPS • {fleet === 'B747' ? '747' : 'MD-11'} FLEET</span>
+              {!isFleetSupported && (
+                <span className="px-2 py-0.5 rounded bg-slate-800/60 text-slate-300 border border-slate-700 font-bold tracking-wider">
+                  COMING SOON
+                </span>
+              )}
               {isSampleData && (
                 <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold tracking-wider">
                   SAMPLE DATA
@@ -143,6 +159,27 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Flight Selection Controls */}
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+          {/* Fleet */}
+          <div className="flex flex-col px-2">
+            <label className="text-[8px] font-bold text-slate-500 uppercase">Fleet</label>
+            <select
+              className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer w-16"
+              value={fleet}
+              onChange={e => {
+                const nextFleet = e.target.value as 'B747' | 'MD11';
+                setFleet(nextFleet);
+                // Reset registration when fleet changes (prevents mixing an MD-11 tail with 747 diagram)
+                setReg('');
+                updateFlight({ reg: '' });
+              }}
+            >
+              <option value="B747">747</option>
+              <option value="MD11">MD-11</option>
+            </select>
+          </div>
+
+          <div className="w-px h-8 bg-slate-800" />
+
           {/* Registration */}
           <div className="flex flex-col px-2">
             <label className="text-[8px] font-bold text-slate-500 uppercase">A/C</label>
@@ -152,7 +189,7 @@ export const Header: React.FC<HeaderProps> = ({
               onChange={e => { setReg(e.target.value); updateFlight({ reg: e.target.value }); }}
             >
               <option value="">--</option>
-              {WGA_FLEET.map(a => (
+              {fleetRegs.map(a => (
                 <option key={a.reg} value={a.reg}>{a.reg}</option>
               ))}
             </select>
@@ -252,7 +289,7 @@ export const Header: React.FC<HeaderProps> = ({
           
           <button 
             onClick={onImport} 
-            disabled={!reg || !flightNumber || !origin || !destination} 
+            disabled={!isFleetSupported || !reg || !flightNumber || !origin || !destination} 
             className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded text-xs font-bold shadow-lg"
           >
             <RefreshCw size={12} /> Import

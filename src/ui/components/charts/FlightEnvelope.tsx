@@ -25,6 +25,8 @@ interface FlightEnvelopeProps {
   fwdLimit: number;       // Forward CG limit
   aftLimit: number;       // Aft CG limit
   fuel: number;           // Fuel weight
+  /** When true, renders without its own card chrome (for embedding in tab panels) */
+  embedded?: boolean;
 }
 
 // B747-400F Limits
@@ -71,6 +73,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   fwdLimit,
   aftLimit,
   fuel,
+  embedded = false,
 }) => {
   // Convert to index units
   const towIndex = macToIndex(currentCG);
@@ -113,7 +116,11 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   const macTicks = [10, 14, 18, 22, 26, 30, 34, 38, 42];
 
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-lg min-h-[420px] flex flex-col">
+    <div className={
+      embedded
+        ? 'flex flex-col min-h-0'
+        : 'bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-lg min-h-[420px] flex flex-col'
+    }>
       {/* Header */}
       <div className="flex justify-between items-start mb-2">
         <div>

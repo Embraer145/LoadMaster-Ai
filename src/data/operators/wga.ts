@@ -11,6 +11,8 @@
 export interface FleetAircraft {
   /** Registration number */
   reg: string;
+  /** Fleet group (used by UI to select aircraft family) */
+  fleet: 'B747' | 'MD11';
   /** Aircraft type code */
   type: string;
 }
@@ -19,10 +21,28 @@ export interface FleetAircraft {
  * WGA Fleet Configuration
  */
 export const WGA_FLEET: FleetAircraft[] = [
-  { reg: 'N344KD', type: 'B747-400BCF' },
-  { reg: 'N356KD', type: 'B747-400BDSF' },
-  { reg: 'N404KZ', type: 'B747-400BCF' },
-  { reg: 'N545KD', type: 'B747-400F' },
+  // 747 fleet (as provided by user; also appears in public fleet listings)
+  { reg: 'N258SN', fleet: 'B747', type: 'B747-400F' },
+  { reg: 'N344KD', fleet: 'B747', type: 'B747-400F' },
+  { reg: 'N356KD', fleet: 'B747', type: 'B747-400F' },
+  { reg: 'N452SN', fleet: 'B747', type: 'B747-400F' },
+
+  // MD-11 fleet (best-effort from public fleet listings; verify/adjust as needed)
+  { reg: 'N411SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N412SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N415JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N512JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N513SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N542KD', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N543JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N545JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N546JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N581JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N781SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N783SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N784SN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N799JN', fleet: 'MD11', type: 'MD-11F' },
+  { reg: 'N804SN', fleet: 'MD11', type: 'MD-11F' },
 ];
 
 /**

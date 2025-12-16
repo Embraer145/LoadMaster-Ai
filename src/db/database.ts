@@ -219,10 +219,11 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
 
   // Insert fleet aircraft
   const fleet = [
-    { reg: 'N344KD', type: 'B747-400BCF' },
-    { reg: 'N356KD', type: 'B747-400BDSF' },
-    { reg: 'N404KZ', type: 'B747-400BCF' },
-    { reg: 'N545KD', type: 'B747-400F' },
+    // Keep seed data aligned with current UI defaults (747 only for now)
+    { reg: 'N258SN', type: 'B747-400F' },
+    { reg: 'N344KD', type: 'B747-400F' },
+    { reg: 'N356KD', type: 'B747-400F' },
+    { reg: 'N452SN', type: 'B747-400F' },
   ];
 
   for (const aircraft of fleet) {

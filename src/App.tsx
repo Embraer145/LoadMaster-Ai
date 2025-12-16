@@ -4,7 +4,7 @@
  * B747-400F Weight & Balance Load Planning System
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Fuel, 
   Zap, 
@@ -109,11 +109,23 @@ export default function App() {
   
   // Local state for settings modal
   const [showSettings, setShowSettings] = useState(false);
+  const [rightTab, setRightTab] = useState<'envelope' | 'inspector'>('envelope');
+
+  // Auto-switch the right panel based on where the user is working:
+  // - warehouse click -> inspect cargo
+  // - aircraft plan click -> show envelope
+  useEffect(() => {
+    if (selection.source === 'warehouse') {
+      setRightTab('inspector');
+    } else if (selection.source === 'slot') {
+      setRightTab('envelope');
+    }
+  }, [selection.source, selection.id]);
 
   // Handlers
   const handleTestSetup = () => {
     setFlight({
-      registration: 'N404KZ',
+      registration: 'N344KD',
       flightNumber: 'KD3402',
       origin: 'LAX',
       destination: 'HKG',
@@ -220,46 +232,91 @@ export default function App() {
       </div>
 
       <div className="flex-1 max-w-[1600px] mx-auto w-full p-4 space-y-6">
-        
-        {/* Aircraft Visualization with Door Labels */}
-        <div className="relative">
-          {/* AI Optimization Overlay */}
-          {aiStatus && (
-            <div className="absolute inset-0 bg-slate-950/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-2xl">
-              <BrainCircuit size={64} className="text-blue-500 animate-pulse mb-4" />
-              <h3 className="text-2xl font-bold text-white mb-2">AI Optimization In Progress</h3>
-              <p className="text-slate-400 font-mono">
-                {aiStatus === 'thinking' ? 'Analyzing Cargo Manifest...' : 'Iterative Balancing Strategy...'}
-              </p>
-            </div>
-          )}
-          
-          <AircraftDiagram
-            positions={positions}
-            selection={selection}
-            drag={drag}
-            flight={flight}
-            onSelectPosition={selectPosition}
-            onDragStart={handleDragStart}
-            onDrop={handleDrop}
-          />
-        </div>
 
-        {/* Row 2: Data & Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FlightEnvelope 
-            currentWeight={physics.weight} 
-            currentCG={physics.towCG} 
-            zfw={physics.zfw} 
-            zfwCG={physics.zfwCG}
-            fwdLimit={physics.forwardLimit}
-            aftLimit={physics.aftLimit}
-            fuel={fuel}
-          />
-          <CargoInspector 
-            selectedContent={selectedContent} 
-            onWeightChange={handleWeightChange} 
-          />
+        {/* Primary workspace:
+            - Small screens: stacks naturally (Aircraft -> Envelope -> Inspector)
+            - Large screens / iPad landscape: Envelope sits next to Aircraft */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Aircraft Visualization with Door Labels */}
+          <div className="relative">
+            {/* AI Optimization Overlay */}
+            {aiStatus && (
+              <div className="absolute inset-0 bg-slate-950/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm rounded-2xl">
+                <BrainCircuit size={64} className="text-blue-500 animate-pulse mb-4" />
+                <h3 className="text-2xl font-bold text-white mb-2">AI Optimization In Progress</h3>
+                <p className="text-slate-400 font-mono">
+                  {aiStatus === 'thinking' ? 'Analyzing Cargo Manifest...' : 'Iterative Balancing Strategy...'}
+                </p>
+              </div>
+            )}
+
+            <AircraftDiagram
+              positions={positions}
+              selection={selection}
+              drag={drag}
+              flight={flight}
+              onSelectPosition={selectPosition}
+              onDragStart={handleDragStart}
+              onDrop={handleDrop}
+            />
+          </div>
+
+          {/* Right info panel (tabs) */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-slate-950/60 border-b border-slate-800">
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setRightTab('envelope')}
+                  className={`px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                    rightTab === 'envelope'
+                      ? 'bg-slate-800 text-white border border-slate-700'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Envelope
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightTab('inspector')}
+                  className={`px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                    rightTab === 'inspector'
+                      ? 'bg-slate-800 text-white border border-slate-700'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Inspector
+                </button>
+              </div>
+
+              <div className="text-[10px] text-slate-500 font-mono">
+                {rightTab === 'inspector'
+                  ? (selectedContent ? `Selected: ${selectedContent.id}` : 'Select cargo to inspect')
+                  : 'Weight & Balance'}
+              </div>
+            </div>
+
+            <div className="p-4">
+              {rightTab === 'envelope' ? (
+                <FlightEnvelope
+                  embedded
+                  currentWeight={physics.weight}
+                  currentCG={physics.towCG}
+                  zfw={physics.zfw}
+                  zfwCG={physics.zfwCG}
+                  fwdLimit={physics.forwardLimit}
+                  aftLimit={physics.aftLimit}
+                  fuel={fuel}
+                />
+              ) : (
+                <CargoInspector
+                  embedded
+                  selectedContent={selectedContent}
+                  onWeightChange={handleWeightChange}
+                />
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Row 3: Footer Controls */}
@@ -337,8 +394,9 @@ export default function App() {
           </div>
 
           {/* Weight, CG, and Lateral Balance */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg grid grid-cols-1 sm:grid-cols-3 gap-6 items-stretch min-w-0">
-            <div className="flex items-center justify-center min-w-0">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg min-w-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
+              <div className="flex items-center justify-center min-w-0">
               <Gauge 
                 label="GROSS WEIGHT" 
                 value={(physics.weight / 1000).toFixed(1)} 
@@ -348,7 +406,7 @@ export default function App() {
               />
             </div>
 
-            <div className="flex items-center justify-center min-w-0">
+              <div className="flex items-center justify-center min-w-0">
               <Gauge 
                 label="CENTER OF GRAVITY" 
                 value={physics.towCG} 
@@ -357,47 +415,56 @@ export default function App() {
                 danger={physics.isUnbalanced} 
               />
             </div>
+            </div>
 
-            <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4 flex flex-col justify-between min-w-0">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-0 truncate">
-                  Main Deck L/R Balance
+            {/* Main Deck L/R Balance (full-width row under gauges) */}
+            <div className="mt-6 bg-slate-950/60 border border-slate-800 rounded-xl p-4 sm:p-5 min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    Main Deck L/R Balance
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    MAIN deck L/R only (lower deck treated as centerline)
+                  </div>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+
+                <div className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold whitespace-nowrap tabular-nums ${
                   lateralIsOk
-                    ? 'bg-slate-800/40 text-slate-300 border-slate-700'
-                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    ? 'bg-slate-800/40 text-slate-200 border-slate-700'
+                    : 'bg-amber-500/15 text-amber-200 border-amber-500/30'
                 }`}>
                   Δ(L−R) {(mainDelta / 1000).toFixed(1)}t
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono tabular-nums">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">L</span>
-                  <span className="text-slate-200 whitespace-nowrap">{(lateral.main.left / 1000).toFixed(1)}t</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">R</span>
-                  <span className="text-slate-200 whitespace-nowrap">{(lateral.main.right / 1000).toFixed(1)}t</span>
                 </div>
               </div>
 
-              <div className="mt-2 space-y-1">
-                {lateralCheckEnabled && (
-                  <div className="text-[10px] text-slate-500">
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase">Left (L)</span>
+                  <span className="text-sm font-mono font-bold text-slate-100 tabular-nums whitespace-nowrap">
+                    {(lateral.main.left / 1000).toFixed(1)}t
+                  </span>
+                </div>
+                <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase">Right (R)</span>
+                  <span className="text-sm font-mono font-bold text-slate-100 tabular-nums whitespace-nowrap">
+                    {(lateral.main.right / 1000).toFixed(1)}t
+                  </span>
+                </div>
+              </div>
+
+              {lateralCheckEnabled && (
+                <div className="mt-3 flex items-center justify-between gap-3 text-[10px]">
+                  <div className="text-slate-500">
                     Limit: {(lateralLimitKg / 1000).toFixed(1)}t
                   </div>
-                )}
-                <div className="text-[10px] text-slate-500">
-                  Includes MAIN deck L/R only (lower deck treated as centerline).
+                  {!lateralIsOk && (
+                    <div className="text-amber-300 font-bold">
+                      Caution: imbalance exceeds configured limit
+                    </div>
+                  )}
                 </div>
-                {!lateralIsOk && lateralCheckEnabled && (
-                  <div className="text-[10px] text-amber-300">
-                    Caution: imbalance exceeds configured limit.
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
 

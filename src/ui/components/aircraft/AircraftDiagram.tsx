@@ -21,6 +21,16 @@ import { DoorOpen } from 'lucide-react';
 import type { LoadedPosition, CargoItem, DragState, SelectionState } from '@core/types';
 import { DeckSlot } from './DeckSlot';
 
+// Door styling: use a single dedicated color that does NOT collide with cargo/material type colors.
+// (Avoid blue/cyan/amber/red/green which are already used elsewhere.)
+const DOOR = {
+  bg: 'bg-violet-500/10',
+  border: 'border-violet-500/30',
+  text: 'text-violet-300',
+  pillBg: 'bg-violet-500',
+  line: 'bg-violet-500',
+};
+
 interface AircraftDiagramProps {
   positions: LoadedPosition[];
   selection: SelectionState;
@@ -68,10 +78,9 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
         
         {/* Legend */}
         <div className="flex items-center gap-4 text-[10px]">
-          {/* Doors use teal to avoid collision with safety "OK" green and cargo types */}
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-teal-500/10 border border-teal-500/30 rounded">
-            <DoorOpen size={12} className="text-teal-300" />
-            <span className="text-teal-300 font-bold">CARGO DOOR</span>
+          <div className={`flex items-center gap-1.5 px-2 py-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
+            <DoorOpen size={12} className={DOOR.text} />
+            <span className={`${DOOR.text} font-bold`}>CARGO DOOR</span>
           </div>
           <div className="text-slate-500">NOSE ← → TAIL</div>
         </div>
@@ -88,10 +97,10 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
           
           {/* Nose Door Label */}
           <div className="absolute -left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
-            <div className="px-2 py-0.5 bg-teal-500 text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1">
+            <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1`}>
               <DoorOpen size={10} /> NOSE
             </div>
-            <div className="w-3 h-0.5 bg-teal-500"></div>
+            <div className={`w-3 h-0.5 ${DOOR.line}`}></div>
           </div>
 
           {/* Aircraft Outline */}
@@ -108,7 +117,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* RIGHT (Starboard) Row - Top */}
               <div className="flex items-center gap-0.5">
                 {/* Nose - A2 on starboard */}
-                <div className="flex gap-0.5 p-1 bg-teal-500/10 border border-teal-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   <div className="w-9">{renderSlot('A2')}</div>
                 </div>
                 
@@ -149,7 +158,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* Center aisle with B1 position */}
               <div className="flex items-center">
                 {/* B1 in the nose area (centered between rows) */}
-                <div className="flex gap-0.5 p-1 bg-teal-500/10 border border-teal-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   <div className="w-9">{renderSlot('B1')}</div>
                 </div>
                 
@@ -164,7 +173,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* LEFT (Port) Row - Bottom */}
               <div className="flex items-center gap-0.5">
                 {/* Nose - A1 on port */}
-                <div className="flex gap-0.5 p-1 bg-teal-500/10 border border-teal-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   <div className="w-9">{renderSlot('A1')}</div>
                 </div>
                 
@@ -179,7 +188,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                 
                 {/* Door zone G-K - highlighted on PORT side + anchored door label */}
                 <div className="relative mx-1">
-                  <div className="flex gap-0.5 p-1 bg-teal-500/10 border border-teal-500/30 rounded">
+                  <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                     {['G', 'H', 'J', 'K'].map(row => (
                       <div key={row} className="w-9">
                         {renderSlot(`${row}L`)}
@@ -187,8 +196,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                     ))}
                   </div>
                   <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-1">
-                    <div className="w-0.5 h-4 bg-teal-500"></div>
-                    <div className="px-2 py-0.5 bg-teal-500 text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1">
+                    <div className={`w-0.5 h-4 ${DOOR.line}`}></div>
+                    <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1`}>
                       <DoorOpen size={10} /> SIDE CARGO DOOR (L)
                     </div>
                   </div>
@@ -233,14 +242,14 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* Forward Hold - door on starboard */}
               <div className="relative flex flex-col">
                 <span className="text-[8px] text-slate-500 mb-1">FWD HOLD</span>
-                <div className="flex gap-0.5 p-1 bg-blue-500/10 border border-blue-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   {['11P', '12P'].map(id => (
                     <div key={id} className="w-9">
                       {renderSlot(id)}
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-0.5 p-1 bg-blue-500/10 border border-blue-500/30 rounded mt-0.5">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded mt-0.5`}>
                   {['21P', '22P', '23P'].map(id => (
                     <div key={id} className="w-9">
                       {renderSlot(id)}
@@ -248,8 +257,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                   ))}
                 </div>
                 <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-1">
-                  <div className="w-0.5 h-4 bg-blue-500"></div>
-                  <div className="px-2 py-0.5 bg-blue-500 text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1">
+                  <div className={`w-0.5 h-4 ${DOOR.line}`}></div>
+                  <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1`}>
                     <DoorOpen size={10} /> FWD CARGO DOOR (R)
                   </div>
                 </div>
@@ -263,14 +272,14 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* Aft Hold - door on starboard */}
               <div className="relative flex flex-col">
                 <span className="text-[8px] text-slate-500 mb-1">AFT HOLD</span>
-                <div className="flex gap-0.5 p-1 bg-blue-500/10 border border-blue-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   {['31P', '32P'].map(id => (
                     <div key={id} className="w-9">
                       {renderSlot(id)}
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-0.5 p-1 bg-blue-500/10 border border-blue-500/30 rounded mt-0.5">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded mt-0.5`}>
                   {['41P', '42P'].map(id => (
                     <div key={id} className="w-9">
                       {renderSlot(id)}
@@ -278,8 +287,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                   ))}
                 </div>
                 <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-1">
-                  <div className="w-0.5 h-4 bg-blue-500"></div>
-                  <div className="px-2 py-0.5 bg-blue-500 text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1">
+                  <div className={`w-0.5 h-4 ${DOOR.line}`}></div>
+                  <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1`}>
                     <DoorOpen size={10} /> AFT CARGO DOOR (R)
                   </div>
                 </div>
@@ -288,7 +297,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               {/* Bulk Cargo */}
               <div className="relative flex flex-col">
                 <span className="text-[8px] text-slate-500 mb-1">BULK</span>
-                <div className="flex gap-0.5 p-1 bg-amber-500/10 border border-amber-500/30 rounded">
+                <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
                   {['52', '53'].map(id => (
                     <div key={id} className="w-8">
                       {renderSlot(id)}
@@ -296,8 +305,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                   ))}
                 </div>
                 <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-1">
-                  <div className="w-0.5 h-4 bg-amber-500"></div>
-                  <div className="px-2 py-0.5 bg-amber-500 text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1">
+                  <div className={`w-0.5 h-4 ${DOOR.line}`}></div>
+                  <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-bold rounded whitespace-nowrap flex items-center gap-1`}>
                     <DoorOpen size={10} /> BULK (R)
                   </div>
                 </div>
