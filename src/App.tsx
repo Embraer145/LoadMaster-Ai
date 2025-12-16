@@ -27,6 +27,7 @@ import {
   NotocModal,
   CaptainBriefModal,
   FinalizeModal,
+  ProofPackModal,
   AircraftDiagram,
   WarehouseSortModal,
   ProfileModal,
@@ -54,6 +55,7 @@ export default function App() {
     optimizationMode,
     showFinalize,
     showNotoc,
+    finalizeLoadPlan,
     setFlight,
     setOptimizationMode,
     setActiveLegIndex,
@@ -119,10 +121,13 @@ export default function App() {
   // Local state for settings modal
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showProofPack, setShowProofPack] = useState(false);
   const [rightTab, setRightTab] = useState<'envelope' | 'inspector'>('envelope');
   const [warehouseTab, setWarehouseTab] = useState<'payload' | 'misc'>('payload');
   const [warehouseUserCollapsed, setWarehouseUserCollapsed] = useState(false);
   const [warehouseTouchStartY, setWarehouseTouchStartY] = useState<number | null>(null);
+  const [warehouseDragPointer, setWarehouseDragPointer] = useState<{ x: number; y: number } | null>(null);
+  const [warehouseDragOverId, setWarehouseDragOverId] = useState<string | null>(null);
   const [warehouseSortMode, setWarehouseSortMode] = useState<WarehouseSortMode>(
     () => settings.display.defaultWarehouseSort
   );
@@ -233,8 +238,27 @@ export default function App() {
     startDrag(item, source);
   };
 
-  const handleWarehouseDragStart = (_e: React.DragEvent, item: Parameters<typeof startDrag>[0]) => {
+  const handleWarehouseDragStart = (e: React.DragEvent, item: Parameters<typeof startDrag>[0]) => {
+    // Use a transparent drag image so we can render our own ghost that resizes over slots.
+    // Also set a payload for better cross-browser DnD support.
+    try {
+      const img = new Image();
+      img.src =
+        'data:image/svg+xml;base64,' +
+        btoa('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
+      e.dataTransfer.setDragImage(img, 0, 0);
+      e.dataTransfer.setData('text/plain', item.id);
+      e.dataTransfer.effectAllowed = 'move';
+    } catch {
+      // no-op
+    }
     startDrag(item, 'warehouse');
+  };
+
+  const handleWarehouseDragEnd = () => {
+    setWarehouseDragPointer(null);
+    setWarehouseDragOverId(null);
+    endDrag();
   };
 
   const handleDrop = (positionId: string) => {
@@ -249,6 +273,28 @@ export default function App() {
     e.preventDefault();
     dropOnWarehouse();
   };
+
+  // Track cursor + which slot we're hovering during warehouse drags (for dynamic ghost sizing).
+  useEffect(() => {
+    if (!(drag.item && drag.source === 'warehouse')) {
+      setWarehouseDragPointer(null);
+      setWarehouseDragOverId(null);
+      return;
+    }
+
+    const onWindowDragOver = (e: globalThis.DragEvent) => {
+      setWarehouseDragPointer({ x: e.clientX, y: e.clientY });
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const slotEl = el?.closest?.('[data-position-id]') as HTMLElement | null;
+      setWarehouseDragOverId(slotEl?.dataset?.positionId ?? null);
+    };
+
+    window.addEventListener('dragover', onWindowDragOver);
+    return () => {
+      window.removeEventListener('dragover', onWindowDragOver);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag.item, drag.source]);
 
   const handleWeightChange = (newWeight: number) => {
     if (selectedContent) {
@@ -265,10 +311,72 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30 flex flex-col pb-16 relative">
+      {/* Warehouse drag ghost (resizes to slot while hovering decks) */}
+      {drag.item && drag.source === 'warehouse' && warehouseDragPointer && (
+        <div
+          className="fixed z-[9998] pointer-events-none"
+          style={{
+            left: warehouseDragPointer.x,
+            top: warehouseDragPointer.y,
+            transform: 'translate(-50%, -70%)',
+          }}
+        >
+          {(() => {
+            const overPos = warehouseDragOverId
+              ? positions.find((p) => p.id === warehouseDragOverId) ?? null
+              : null;
+            const wClass = overPos?.id === '52' || overPos?.id === '53' ? 'w-8' : 'w-9';
+            const hClass = overPos?.deck === 'MAIN' ? 'h-14' : 'h-12';
+
+            if (overPos) {
+              return (
+                <div
+                  className={`${wClass} ${hClass} rounded-md border border-white/20 shadow-2xl flex flex-col items-center justify-center ${drag.item!.type.color} text-white`}
+                >
+                  <div className="flex items-center gap-0.5 leading-none">
+                    <span className="text-[9px]">{drag.item!.dest.flag}</span>
+                    <span className="text-[9px] font-bold tracking-wide opacity-95">{drag.item!.dest.code}</span>
+                  </div>
+                  <div className="text-sm font-bold font-mono leading-tight tabular-nums">
+                    {(drag.item!.weight / 1000).toFixed(1)}
+                  </div>
+                  <div className="text-[7px] font-medium opacity-80 uppercase">{drag.item!.type.code}</div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="w-32 rounded-xl border border-slate-700 bg-slate-950/85 backdrop-blur shadow-2xl overflow-hidden">
+                <div className={`h-1 ${drag.item!.type.color}`} />
+                <div className="px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg leading-none">{drag.item!.dest.flag}</span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-extrabold text-white tracking-wider truncate">
+                          {drag.item!.dest.code} • {(drag.item!.weight / 1000).toFixed(1)}t
+                        </div>
+                        <div className="text-[9px] text-slate-400 font-mono truncate">{drag.item!.id}</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-300 bg-slate-800/40 border border-slate-700 rounded-lg px-2 py-1">
+                      Drag
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
       
       {/* Modals */}
       {showFinalize && (
-        <FinalizeModal physics={physics} onClose={() => setShowFinalize(false)} />
+        <FinalizeModal
+          physics={physics}
+          onFinalize={finalizeLoadPlan}
+          onClose={() => setShowFinalize(false)}
+        />
       )}
       {showNotoc && (
         <NotocModal
@@ -290,6 +398,17 @@ export default function App() {
       {showSettings && (
         <AdminSettings onClose={() => setShowSettings(false)} />
       )}
+      <ProofPackModal
+        isOpen={showProofPack}
+        onClose={() => setShowProofPack(false)}
+        operatorCode={settings.general.defaultOperator}
+        flight={flight}
+        aircraftConfig={aircraftConfig}
+        positions={positions}
+        fuelKg={takeoffFuelKg}
+        physics={physics}
+        settingsSnapshot={settings as unknown as Record<string, unknown>}
+      />
       <ProfileModal isOpen={showProfile} onClose={() => setShowProfile(false)} />
       <WarehouseSortModal
         isOpen={showWarehouseSort}
@@ -350,10 +469,10 @@ export default function App() {
                       if (warehouseTab === 'misc') setWarehouseUserCollapsed(false);
                       setWarehouseTab('misc');
                     }}
-                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                    className={`px-2 py-1.5 rounded text-[11px] font-extrabold uppercase tracking-wider border ${
                       warehouseTab === 'misc'
                         ? 'bg-slate-800 text-white border-slate-700'
-                        : 'bg-slate-950/30 text-slate-400 border-slate-800 hover:text-slate-200'
+                        : 'bg-slate-950/30 text-slate-300 border-slate-800 hover:text-white'
                     }`}
                   >
                     Fuel &amp; Load
@@ -364,10 +483,10 @@ export default function App() {
                       if (warehouseTab === 'payload') setWarehouseUserCollapsed(false);
                       setWarehouseTab('payload');
                     }}
-                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                    className={`px-2 py-1.5 rounded text-[11px] font-extrabold uppercase tracking-wider border ${
                       warehouseTab === 'payload'
                         ? 'bg-slate-800 text-white border-slate-700'
-                        : 'bg-slate-950/30 text-slate-400 border-slate-800 hover:text-slate-200'
+                        : 'bg-slate-950/30 text-slate-300 border-slate-800 hover:text-white'
                     }`}
                   >
                     Payload
@@ -387,40 +506,48 @@ export default function App() {
             <div className="flex items-stretch gap-2">
               {/* Mini-menu (left): Payload / Fuel Load / Sort */}
               <div className="w-28 flex flex-col justify-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (warehouseTab === 'payload') setWarehouseUserCollapsed(true);
-                    else {
-                      setWarehouseUserCollapsed(false);
-                      setWarehouseTab('payload');
-                    }
-                  }}
-                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    warehouseTab === 'payload' ? 'bg-slate-800 text-white border border-slate-700' : 'bg-slate-950/30 text-slate-400 border border-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  Payload
-                </button>
-                <button
-                  type="button"
-                  disabled={warehouseTab !== 'payload'}
-                  onClick={() => {
-                    if (warehouseTab !== 'payload') return;
-                    setShowWarehouseSort(true);
-                  }}
-                  className={`px-2 py-2 rounded-lg border flex flex-col items-start justify-center ${
-                    warehouseTab === 'payload'
-                      ? 'bg-slate-950/40 border-slate-800 text-slate-200 hover:border-slate-700'
-                      : 'bg-slate-950/20 border-slate-900 text-slate-500 cursor-not-allowed opacity-60'
-                  }`}
-                  title={warehouseTab === 'payload' ? 'Sort payload' : 'Sorting not applicable for Fuel & Load'}
-                >
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider leading-none">Sort</span>
-                  <span className="text-[10px] text-slate-500 font-mono leading-none mt-0.5">
-                    {WAREHOUSE_SORT_LABEL[warehouseSortMode]}
-                  </span>
-                </button>
+                {/* Payload (primary) + Sort (sub-action, visually attached) */}
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (warehouseTab === 'payload') setWarehouseUserCollapsed(true);
+                      else {
+                        setWarehouseUserCollapsed(false);
+                        setWarehouseTab('payload');
+                      }
+                    }}
+                    className={`px-2 py-2 rounded-t-lg text-[11px] font-extrabold uppercase tracking-wider border ${
+                      warehouseTab === 'payload'
+                        ? 'bg-slate-800 text-white border-slate-700'
+                        : 'bg-slate-950/30 text-slate-300 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    Payload
+                  </button>
+                  <button
+                    type="button"
+                    disabled={warehouseTab !== 'payload'}
+                    onClick={() => {
+                      if (warehouseTab !== 'payload') return;
+                      setShowWarehouseSort(true);
+                    }}
+                    className={`px-2 py-2 rounded-b-lg border border-t-0 flex flex-col items-start justify-center ${
+                      warehouseTab === 'payload'
+                        ? 'bg-slate-950/40 border-slate-800 text-slate-200 hover:border-slate-700'
+                        : 'bg-slate-950/20 border-slate-900 text-slate-500 cursor-not-allowed opacity-60'
+                    }`}
+                    title={warehouseTab === 'payload' ? 'Sort payload' : 'Sorting not applicable for Fuel & Load'}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[10px] font-black uppercase tracking-wider leading-none">Sort</span>
+                      <span className="text-[9px] font-mono text-slate-500 leading-none">↕</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono leading-none mt-0.5 truncate w-full">
+                      {WAREHOUSE_SORT_LABEL[warehouseSortMode]}
+                    </span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -430,8 +557,8 @@ export default function App() {
                       setWarehouseTab('misc');
                     }
                   }}
-                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    warehouseTab === 'misc' ? 'bg-slate-800 text-white border border-slate-700' : 'bg-slate-950/30 text-slate-400 border border-slate-800 hover:text-slate-200'
+                  className={`px-2 py-2 rounded-lg text-[11px] font-extrabold uppercase tracking-wider border ${
+                    warehouseTab === 'misc' ? 'bg-slate-800 text-white border border-slate-700' : 'bg-slate-950/30 text-slate-300 border border-slate-800 hover:text-white'
                   }`}
                 >
                   Fuel &amp; Load
@@ -467,6 +594,7 @@ export default function App() {
                         isSelected={selection.id === item.id && selection.source === 'warehouse'}
                         onSelect={(i) => selectWarehouseItem(i.id)}
                         onDragStart={handleWarehouseDragStart}
+                        onDragEnd={handleWarehouseDragEnd}
                       />
                     ))}
                   </div>
@@ -649,6 +777,7 @@ export default function App() {
               onOpenNotoc={() => setShowNotoc(true)}
               onOpenFinalize={() => setShowFinalize(true)}
               onOpenCaptainBrief={() => setShowCaptainBrief(true)}
+              onOpenProofPack={() => setShowProofPack(true)}
               onSelectPosition={selectPosition}
               onDragStart={handleDragStart}
               onDrop={handleDrop}

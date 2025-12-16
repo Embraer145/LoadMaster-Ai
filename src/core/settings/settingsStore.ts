@@ -24,6 +24,7 @@ interface SettingsState {
   updateDGSettings: (updates: Partial<AppSettings['dangerousGoods']>) => void;
   updateUnloadSettings: (updates: Partial<AppSettings['unloadEfficiency']>) => void;
   updateDisplaySettings: (updates: Partial<AppSettings['display']>) => void;
+  updateComplianceSettings: (updates: Partial<AppSettings['compliance']>) => void;
   
   // DG rule management
   addDGClassRule: (rule: DGClassRule) => void;
@@ -97,6 +98,14 @@ export const useSettingsStore = create<SettingsState>()(
         settings: {
           ...state.settings,
           display: { ...state.settings.display, ...updates },
+        },
+      })),
+
+      // Compliance settings
+      updateComplianceSettings: (updates) => set((state) => ({
+        settings: {
+          ...state.settings,
+          compliance: { ...state.settings.compliance, ...updates },
         },
       })),
       
@@ -227,5 +236,12 @@ export function useDGSettings() {
  */
 export function useOptimizationSettings() {
   return useSettingsStore((state) => state.settings.optimization);
+}
+
+/**
+ * Hook to get compliance settings
+ */
+export function useComplianceSettings() {
+  return useSettingsStore((state) => state.settings.compliance);
 }
 

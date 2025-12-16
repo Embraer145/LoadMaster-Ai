@@ -55,6 +55,7 @@ interface AircraftDiagramProps {
   onOpenNotoc: () => void;
   onOpenFinalize: () => void;
   onOpenCaptainBrief: () => void;
+  onOpenProofPack: () => void;
   onSelectPosition: (id: string) => void;
   onDragStart: (item: CargoItem, positionId: string) => void;
   onDrop: (positionId: string) => void;
@@ -76,6 +77,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
   onOpenNotoc,
   onOpenFinalize,
   onOpenCaptainBrief,
+  onOpenProofPack,
   onSelectPosition,
   onDragStart,
   onDrop,
@@ -551,10 +553,18 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
 
               <button
                 type="button"
-                onClick={onOpenCaptainBrief}
+                onClick={onOpenProofPack}
                 className="mt-2 w-full bg-slate-900/40 border border-slate-700 text-slate-200 py-2 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-900/60"
               >
-                W&amp;B PDF
+                Proof / Audit Pack (PDF)
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenCaptainBrief}
+                className="mt-2 w-full bg-slate-900/20 border border-slate-800 text-slate-300 py-2 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-900/40"
+              >
+                Captain Brief
               </button>
             </div>
           </div>

@@ -22,6 +22,7 @@ import type {
   DGPositionRule,
   UnloadSettings,
   DisplaySettings,
+  ComplianceSettings,
 } from './types';
 
 /**
@@ -398,6 +399,18 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
 };
 
 /**
+ * Default compliance settings (policy + self-audit requirements)
+ */
+export const DEFAULT_COMPLIANCE_SETTINGS: ComplianceSettings = {
+  offlinePolicy: {
+    allowed: true,
+    maxCacheAgeHours: 24,
+  },
+  requireAssumptionsDisclosure: true,
+  requireVersionLabels: true,
+};
+
+/**
  * Complete default settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -407,6 +420,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dangerousGoods: DEFAULT_DG_SETTINGS,
   unloadEfficiency: DEFAULT_UNLOAD_SETTINGS,
   display: DEFAULT_DISPLAY_SETTINGS,
+  compliance: DEFAULT_COMPLIANCE_SETTINGS,
 };
 
 /**

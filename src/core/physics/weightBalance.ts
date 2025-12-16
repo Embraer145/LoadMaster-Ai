@@ -13,6 +13,18 @@ import type {
   PhysicsResult,
   StationLoad,
 } from '../types';
+import { getB747Envelope, getCGLimitsAtWeight } from '../envelope';
+
+function getEnvelopeForConfig(
+  config: AircraftConfig,
+  phase: 'takeoff' | 'zero_fuel' | 'landing'
+) {
+  // Temporary mapping until envelopes are moved into AircraftConfig (manual-traceable per tail).
+  if (config.type.toUpperCase().includes('B747-400F')) {
+    return getB747Envelope(phase);
+  }
+  return null;
+}
 
 /**
  * Calculate the moment for a single loaded position
@@ -116,11 +128,15 @@ export function calculateForwardLimit(
   weight: number, 
   config: AircraftConfig
 ): number {
-  // Linear interpolation: limit moves aft as weight increases
-  // This is a simplified model - actual envelopes are more complex
+  const envelope = getEnvelopeForConfig(config, 'takeoff');
+  if (envelope) {
+    return getCGLimitsAtWeight(weight, envelope).forwardLimit;
+  }
+
+  // Fallback (legacy heuristic) for aircraft without an envelope table yet.
   const baseLimit = config.cgLimits.forward;
   const weightFactor = Math.max(0, (weight - 250000) / 150000);
-  return baseLimit + (weightFactor * 12);
+  return baseLimit + weightFactor * 12;
 }
 
 /**
@@ -131,10 +147,14 @@ export function calculateForwardLimit(
  * @returns Aft CG limit in %MAC
  */
 export function calculateAftLimit(
-  _weight: number, 
+  weight: number, 
   config: AircraftConfig
 ): number {
-  // For now, aft limit is constant - can be made dynamic if needed
+  const envelope = getEnvelopeForConfig(config, 'takeoff');
+  if (envelope) {
+    return getCGLimitsAtWeight(weight, envelope).aftLimit;
+  }
+
   return config.cgLimits.aft;
 }
 

@@ -27,6 +27,21 @@ import type { OptimizationMode } from '@core/optimizer';
 import { B747_400F_CONFIG } from '@data/aircraft';
 import { WGA_DESTINATIONS, WGA_ORIGINS } from '@data/operators';
 import { useSettingsStore } from '@core/settings';
+import { logAudit } from '@/db/repositories/auditRepository';
+
+function safeAudit(input: Parameters<typeof logAudit>[0]) {
+  try {
+    const auditEnabled = useSettingsStore.getState().settings.general.auditLogging;
+    if (!auditEnabled) return;
+    logAudit(input);
+  } catch {
+    // In prototype mode, DB/audit logging is best-effort.
+  }
+}
+
+function nextRevision(prev: { revision: number }): number {
+  return Math.max(1, (prev.revision ?? 0) + 1);
+}
 
 /**
  * Cargo types registry
@@ -117,6 +132,11 @@ interface LoadPlanState {
   // Modal state
   showFinalize: boolean;
   showNotoc: boolean;
+
+  // Record control (immutability + revisioning)
+  loadPlanStatus: 'draft' | 'final';
+  revision: number;
+  finalizedAtUtc: string | null;
   
   // Actions
   setFlight: (flight: FlightInfo | null) => void;
@@ -162,6 +182,9 @@ interface LoadPlanState {
   // Modal actions
   setShowFinalize: (show: boolean) => void;
   setShowNotoc: (show: boolean) => void;
+
+  // Finalization / revision control
+  finalizeLoadPlan: () => void;
   
   // Helper getters
   getValidDestinations: () => Destination[];
@@ -319,7 +342,7 @@ function createDefaultLegs(count: number): LegInputs[] {
     fuel: {
       blockFuelKg: 40000,
       taxiFuelKg: 0,
-      tripBurnKg: 0,
+      tripBurnKg: 20000,
     },
     misc: {
       crewCount: 2,
@@ -379,6 +402,23 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
   const initialLegs = createDefaultLegs(1);
   const initialPhysics = computePhysics(initialPositions, B747_400F_CONFIG, initialLegs[0]);
   const initialMode = useSettingsStore.getState().settings.optimization.defaultMode ?? 'fuel_efficiency';
+
+  const ensureDraftForMutation = (action: string) => {
+    const state = get();
+    if (state.loadPlanStatus !== 'final') return;
+    const revision = nextRevision(state);
+    set({ loadPlanStatus: 'draft', revision, finalizedAtUtc: null });
+    safeAudit({
+      action: 'LOAD_PLAN_UPDATED',
+      entityType: 'load_plan',
+      entityId: state.flight?.flightNumber ?? 'unspecified',
+      metadata: {
+        reason: 'auto_new_revision_on_edit_after_finalize',
+        action,
+        revision,
+      },
+    });
+  };
   
   return {
     // Initial state
@@ -395,11 +435,15 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     aiStatus: null,
     aiCancelRequested: false,
     optimizationMode: initialMode,
+    loadPlanStatus: 'draft',
+    revision: 1,
+    finalizedAtUtc: null,
     cancelAiOptimization: () => {
       set({ aiCancelRequested: true });
     },
 
     toggleMustFly: (cargoId) => {
+      ensureDraftForMutation('toggleMustFly');
       const state = get();
       const toggle = (c: CargoItem) => ({ ...c, mustFly: !c.mustFly });
 
@@ -422,6 +466,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // Flight actions
     setFlight: (flight) => {
+      ensureDraftForMutation('setFlight');
       if (flight) {
         // Build route from flight info
         const route: RouteStop[] = [
@@ -477,6 +522,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     setRoute: (route) => set({ route }),
     
     setFuel: (fuel) => {
+      ensureDraftForMutation('setFuel');
       const state = get();
       const nextLegs = [...state.legs];
       nextLegs[state.activeLegIndex] = {
@@ -495,6 +541,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
 
     updateLegFuel: (idx, updates) => {
+      ensureDraftForMutation('updateLegFuel');
       const state = get();
       const nextLegs = [...state.legs];
       const targetIdx = Math.max(0, Math.min(nextLegs.length - 1, idx));
@@ -507,6 +554,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
 
     updateLegMisc: (idx, updates) => {
+      ensureDraftForMutation('updateLegMisc');
       const state = get();
       const nextLegs = [...state.legs];
       const targetIdx = Math.max(0, Math.min(nextLegs.length - 1, idx));
@@ -522,6 +570,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // Cargo actions
     importManifest: (count = 30) => {
+      ensureDraftForMutation('importManifest');
       const { aircraftConfig, route, legs, activeLegIndex } = get();
       const warehouse = generateManifest(count, route);
       const positions = initializePositions(aircraftConfig);
@@ -547,6 +596,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     clearAll: () => {
+      ensureDraftForMutation('clearAll');
       const { aircraftConfig, legs, activeLegIndex } = get();
       const positions = initializePositions(aircraftConfig);
       const physics = computePhysics(positions, aircraftConfig, legs[activeLegIndex]);
@@ -559,6 +609,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     updateCargoWeight: (cargoId, newWeight) => {
+      ensureDraftForMutation('updateCargoWeight');
       const { positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       
       // Check if in warehouse
@@ -584,6 +635,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // Position actions
     loadCargoAtPosition: (positionId, cargo) => {
+      ensureDraftForMutation('loadCargoAtPosition');
       const { positions, aircraftConfig, legs, activeLegIndex } = get();
       const newPositions = positions.map(p => 
         p.id === positionId ? { ...p, content: cargo } : p
@@ -593,6 +645,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     unloadPosition: (positionId) => {
+      ensureDraftForMutation('unloadPosition');
       const { positions, aircraftConfig, legs, activeLegIndex } = get();
       const newPositions = positions.map(p => 
         p.id === positionId ? { ...p, content: null } : p
@@ -602,6 +655,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     moveCargoToWarehouse: (positionId) => {
+      ensureDraftForMutation('moveCargoToWarehouse');
       const { positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       const position = positions.find(p => p.id === positionId);
       if (!position?.content) return;
@@ -642,6 +696,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // Drop handlers
     dropOnPosition: (positionId) => {
+      ensureDraftForMutation('dropOnPosition');
       const { drag, positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       if (!drag.item) return false;
       
@@ -691,6 +746,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     dropOnWarehouse: () => {
+      ensureDraftForMutation('dropOnWarehouse');
       const { drag, positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       if (!drag.item || drag.source === 'warehouse') return;
       
@@ -711,6 +767,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // AI optimization with different strategies
     runAiOptimization: async () => {
+      ensureDraftForMutation('runAiOptimization');
       const { warehouse, positions, aircraftConfig, optimizationMode, route, legs, activeLegIndex } = get();
       const appSettings = useSettingsStore.getState().settings;
       const optSettings = appSettings.optimization;
@@ -942,6 +999,23 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     // Modal actions
     setShowFinalize: (show) => set({ showFinalize: show }),
     setShowNotoc: (show) => set({ showNotoc: show }),
+
+    finalizeLoadPlan: () => {
+      const state = get();
+      if (state.loadPlanStatus === 'final') return;
+      const finalizedAtUtc = new Date().toISOString();
+      set({ loadPlanStatus: 'final', finalizedAtUtc });
+      safeAudit({
+        action: 'LOAD_PLAN_FINALIZED',
+        entityType: 'load_plan',
+        entityId: state.flight?.flightNumber ?? 'unspecified',
+        metadata: {
+          registration: state.flight?.registration,
+          revision: state.revision,
+          finalizedAtUtc,
+        },
+      });
+    },
   };
 });
 

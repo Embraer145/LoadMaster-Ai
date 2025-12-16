@@ -10,10 +10,16 @@ import type { PhysicsResult } from '@core/types';
 
 interface FinalizeModalProps {
   physics: PhysicsResult;
+  onFinalize: () => void;
   onClose: () => void;
 }
 
-export const FinalizeModal: React.FC<FinalizeModalProps> = ({ physics, onClose }) => {
+export const FinalizeModal: React.FC<FinalizeModalProps> = ({ physics, onFinalize, onClose }) => {
+  const handleFinalize = () => {
+    onFinalize();
+    onClose();
+  };
+
   const handleTransmit = () => {
     alert("Transmitted to ACARS");
     onClose();
@@ -31,7 +37,7 @@ export const FinalizeModal: React.FC<FinalizeModalProps> = ({ physics, onClose }
         
         <div className="flex items-center gap-3 mb-6">
           <CheckSquare className="text-emerald-500 w-8 h-8" />
-          <h2 className="text-2xl font-bold text-white">Flight Release Generated</h2>
+          <h2 className="text-2xl font-bold text-white">Finalize Load Plan</h2>
         </div>
 
         <div className="space-y-4 mb-8">
@@ -61,12 +67,20 @@ export const FinalizeModal: React.FC<FinalizeModalProps> = ({ physics, onClose }
           </div>
         </div>
 
-        <button 
-          onClick={handleTransmit} 
-          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg"
-        >
-          <Wind size={18} /> TRANSMIT TO FLIGHT DECK
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            onClick={handleFinalize}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg"
+          >
+            <CheckSquare size={18} /> FINALIZE &amp; LOCK
+          </button>
+          <button
+            onClick={handleTransmit}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg border border-slate-700"
+          >
+            <Wind size={18} /> TRANSMIT (PROTOTYPE)
+          </button>
+        </div>
       </div>
     </div>
   );

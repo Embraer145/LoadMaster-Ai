@@ -41,3 +41,45 @@
   animation: lm-wiggle 120ms ease-in-out infinite;
 }
 
+/* =============================================================================
+   Proof / Audit Pack printing
+   - Ensures clean, professional print-to-PDF output.
+   - Prints ONLY the proof pack root (#lm-proof-pack).
+   ============================================================================= */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only the proof pack */
+  #lm-proof-pack,
+  #lm-proof-pack * {
+    visibility: visible !important;
+  }
+
+  #lm-proof-pack {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Force white paper + readable text */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important; /* slate-900 */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide any explicitly no-print elements */
+  .lm-no-print {
+    display: none !important;
+  }
+}
+

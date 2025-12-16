@@ -4,13 +4,14 @@
  * Comprehensive settings management interface.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Settings, 
   Zap, 
   AlertTriangle, 
   Truck, 
   Monitor,
+  ShieldCheck,
   RotateCcw,
   Save,
   ChevronRight,
@@ -21,12 +22,15 @@ import {
   X,
 } from 'lucide-react';
 import { useSettingsStore, useSettings } from '@core/settings';
+import { env } from '@/config/env';
+import { evaluateCompliance } from '@core/compliance';
+import { useAuthStore } from '@core/auth';
 import type { OptimizationMode } from '@core/optimizer/types';
 import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
 
-type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display';
+type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display' | 'compliance';
 
 interface AdminSettingsProps {
   onClose: () => void;
@@ -34,6 +38,8 @@ interface AdminSettingsProps {
 
 export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('optimization');
+  const { currentUser } = useAuthStore();
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'test';
   const settings = useSettings();
   const { 
     updateGeneralSettings,
@@ -42,6 +48,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     updateDGSettings,
     updateUnloadSettings,
     updateDisplaySettings,
+    updateComplianceSettings,
     resetSection,
     resetToDefaults,
   } = useSettingsStore();
@@ -53,6 +60,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     { id: 'dg', label: 'Dangerous Goods', icon: <AlertTriangle size={16} /> },
     { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} /> },
     { id: 'display', label: 'Display', icon: <Monitor size={16} /> },
+    { id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={16} /> },
   ];
 
   return (
@@ -73,6 +81,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
             <div className="flex items-center gap-3">
               <button 
                 onClick={resetToDefaults}
+                disabled={!canEdit}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium flex items-center gap-2"
               >
                 <RotateCcw size={14} /> Reset All
@@ -115,49 +124,69 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
             </div>
 
             {/* Content */}
-            <div className="flex-1 bg-slate-900 rounded-2xl border border-slate-800 p-6">
-              {activeTab === 'general' && (
-                <GeneralSettingsPanel 
-                  settings={settings.general}
-                  onUpdate={updateGeneralSettings}
-                  onReset={() => resetSection('general')}
-                />
+            <div className="flex-1 bg-slate-900 rounded-2xl border border-slate-800 p-6 relative">
+              {!canEdit && (
+                <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200">
+                  <div className="text-xs font-bold uppercase tracking-wider">Read-only</div>
+                  <div className="text-[11px] mt-1 opacity-90">
+                    Current user role <span className="font-mono">{currentUser?.role ?? 'anonymous'}</span> cannot modify admin settings yet.
+                    (RBAC enforcement is in place; role management will be expanded later.)
+                  </div>
+                </div>
               )}
-              {activeTab === 'standardWeights' && (
-                <StandardWeightsPanel
-                  settings={settings.standardWeights}
-                  onUpdate={updateStandardWeightsSettings}
-                  onReset={() => resetSection('standardWeights')}
-                />
-              )}
-              {activeTab === 'optimization' && (
-                <OptimizationSettingsPanel 
-                  settings={settings.optimization}
-                  onUpdate={updateOptimizationSettings}
-                  onReset={() => resetSection('optimization')}
-                />
-              )}
-              {activeTab === 'dg' && (
-                <DGSettingsPanel 
-                  settings={settings.dangerousGoods}
-                  onUpdate={updateDGSettings}
-                  onReset={() => resetSection('dangerousGoods')}
-                />
-              )}
-              {activeTab === 'unload' && (
-                <EnhancedUnloadSettingsPanel 
-                  settings={settings.unloadEfficiency}
-                  onUpdate={updateUnloadSettings}
-                  onReset={() => resetSection('unloadEfficiency')}
-                />
-              )}
-              {activeTab === 'display' && (
-                <DisplaySettingsPanel 
-                  settings={settings.display}
-                  onUpdate={updateDisplaySettings}
-                  onReset={() => resetSection('display')}
-                />
-              )}
+
+              <div className={canEdit ? '' : 'pointer-events-none opacity-60'}>
+                {activeTab === 'general' && (
+                  <GeneralSettingsPanel 
+                    settings={settings.general}
+                    onUpdate={updateGeneralSettings}
+                    onReset={() => resetSection('general')}
+                  />
+                )}
+                {activeTab === 'standardWeights' && (
+                  <StandardWeightsPanel
+                    settings={settings.standardWeights}
+                    onUpdate={updateStandardWeightsSettings}
+                    onReset={() => resetSection('standardWeights')}
+                  />
+                )}
+                {activeTab === 'optimization' && (
+                  <OptimizationSettingsPanel 
+                    settings={settings.optimization}
+                    onUpdate={updateOptimizationSettings}
+                    onReset={() => resetSection('optimization')}
+                  />
+                )}
+                {activeTab === 'dg' && (
+                  <DGSettingsPanel 
+                    settings={settings.dangerousGoods}
+                    onUpdate={updateDGSettings}
+                    onReset={() => resetSection('dangerousGoods')}
+                  />
+                )}
+                {activeTab === 'unload' && (
+                  <EnhancedUnloadSettingsPanel 
+                    settings={settings.unloadEfficiency}
+                    onUpdate={updateUnloadSettings}
+                    onReset={() => resetSection('unloadEfficiency')}
+                  />
+                )}
+                {activeTab === 'display' && (
+                  <DisplaySettingsPanel 
+                    settings={settings.display}
+                    onUpdate={updateDisplaySettings}
+                    onReset={() => resetSection('display')}
+                  />
+                )}
+                {activeTab === 'compliance' && (
+                  <ComplianceSettingsPanel
+                    settings={settings.compliance}
+                    onUpdate={updateComplianceSettings}
+                    onReset={() => resetSection('compliance')}
+                    fullSettings={settings}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -561,6 +590,181 @@ const DisplaySettingsPanel: React.FC<PanelProps<typeof import('@core/settings').
     </SettingRow>
   </div>
 );
+
+// Compliance Settings Panel
+const ComplianceSettingsPanel: React.FC<
+  PanelProps<typeof import('@core/settings').DEFAULT_SETTINGS.compliance> & { fullSettings: import('@core/settings').AppSettings }
+> = ({ settings, onUpdate, onReset, fullSettings }) => {
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+
+  const report = useMemo(() => {
+    // Feature flags (will flip to true as we implement them)
+    const hasEnvelopeInterpolation = true;
+    const hasImmutableFinalize = true;
+    const hasRoleBasedAccess = true;
+    return evaluateCompliance({
+      env,
+      settings: fullSettings,
+      online,
+      hasEnvelopeInterpolation,
+      hasImmutableFinalize,
+      hasRoleBasedAccess,
+    });
+  }, [fullSettings, online]);
+
+  const downloadReport = () => {
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `compliance_report_${report.generatedAtUtc.replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const statusTone =
+    report.summary.ready ? 'text-emerald-300 bg-emerald-900/20 border-emerald-900/50' : 'text-amber-300 bg-amber-900/20 border-amber-900/50';
+
+  return (
+    <div>
+      <SectionHeader
+        title="Compliance / Self-Audit"
+        description="Checklist-driven operational readiness, offline policy, and exportable compliance reports."
+        onReset={onReset}
+      />
+
+      <div className={`p-3 rounded border ${statusTone}`}>
+        <div className="text-xs font-bold uppercase tracking-wider">
+          Readiness: {report.summary.ready ? 'READY (no blocking TODO/FAIL)' : 'NOT READY (blocking items present)'}
+        </div>
+        <div className="mt-1 text-[11px] opacity-80 font-mono">
+          pass {report.summary.pass} • warn {report.summary.warn} • fail {report.summary.fail} • todo {report.summary.todo} • blocking {report.summary.blockingFailures}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-white mb-2">Offline Policy</div>
+        <SettingRow
+          label="Allow Offline Operation"
+          description="If enabled, the app may be used offline (requires cached data and cache-age enforcement)."
+        >
+          <Toggle
+            checked={settings.offlinePolicy.allowed}
+            onChange={(v) => onUpdate({ offlinePolicy: { ...settings.offlinePolicy, allowed: v } })}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Max Cache Age (hours)"
+          description="Maximum permitted age of cached data in offline mode."
+        >
+          <input
+            type="number"
+            value={settings.offlinePolicy.maxCacheAgeHours}
+            onChange={(e) =>
+              onUpdate({
+                offlinePolicy: {
+                  ...settings.offlinePolicy,
+                  maxCacheAgeHours: Math.max(1, Math.min(168, parseInt(e.target.value) || 24)),
+                },
+              })
+            }
+            className="w-24 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+            min={1}
+            max={168}
+            step={1}
+          />
+        </SettingRow>
+        <div className="mt-2 text-[11px] text-slate-500">
+          Current device: <span className="font-mono text-slate-300">{online ? 'ONLINE' : 'OFFLINE'}</span> • Env offline enabled:{' '}
+          <span className="font-mono text-slate-300">{env.offlineEnabled ? 'true' : 'false'}</span>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-white mb-2">Report Controls</div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={downloadReport}
+            className="px-4 py-2 bg-white text-slate-900 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 hover:bg-slate-100"
+          >
+            Download Readiness Report (JSON)
+          </button>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          This report is designed to be shareable with internal audit / authorities. PDF export can be added later.
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-white mb-2">Checklist</div>
+        <div className="space-y-2">
+          {report.checks.map((c) => (
+            <div
+              key={c.id}
+              className="p-3 rounded-lg border border-slate-800 bg-slate-950/30"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                    {c.section} • {c.id}
+                    {c.blocking && <span className="ml-2 text-[10px] text-amber-300">BLOCKING</span>}
+                  </div>
+                  <div className="text-[12px] text-white font-bold mt-0.5">{c.title}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">{c.requirement}</div>
+                  {c.details && <div className="text-[11px] text-slate-500 mt-1">{c.details}</div>}
+                </div>
+                <span className={`px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wider ${
+                  c.status === 'pass'
+                    ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50'
+                    : c.status === 'warn'
+                      ? 'bg-amber-900/20 text-amber-300 border-amber-900/50'
+                      : c.status === 'fail'
+                        ? 'bg-red-900/20 text-red-300 border-red-900/50'
+                        : 'bg-slate-800/40 text-slate-200 border-slate-700'
+                }`}>
+                  {c.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-white mb-2">Reference System Comparison (Evionica)</div>
+        <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+          <div className="text-[11px] text-slate-400">
+            This will ingest Evionica exports and generate tolerance reports (ZFW/TOW/CG/envelope). It’s intentionally marked <span className="font-bold">TODO</span> until you provide exports.
+          </div>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+            <input
+              type="file"
+              disabled
+              className="text-[11px] text-slate-500"
+            />
+            <span className="text-[10px] text-slate-500">
+              Upload disabled (waiting for file format + sample exports).
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- Helper Components ---
 

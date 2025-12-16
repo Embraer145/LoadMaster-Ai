@@ -6,4 +6,5 @@
  */
 
 export * from './weightBalance';
+export * from './calculationTrace';
 

@@ -15,6 +15,7 @@ interface DraggableCargoProps {
   isSelected: boolean;
   onSelect: (item: CargoItem) => void;
   onDragStart: (e: React.DragEvent, item: CargoItem) => void;
+  onDragEnd?: (e: React.DragEvent, item: CargoItem) => void;
 }
 
 export const DraggableCargo: React.FC<DraggableCargoProps> = ({
@@ -22,6 +23,7 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
   isSelected,
   onSelect,
   onDragStart,
+  onDragEnd,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -52,6 +54,7 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
     <div 
       draggable 
       onDragStart={(e) => onDragStart(e, item)}
+      onDragEnd={(e) => onDragEnd?.(e, item)}
       onClick={() => onSelect(item)}
       className={`
         relative flex-shrink-0 w-32 rounded-lg border-2 cursor-grab active:cursor-grabbing 

@@ -87,7 +87,15 @@ export function saveToStorage(database?: SqlJsDatabase): void {
 
   try {
     const data = dbToSave.export();
-    const base64 = btoa(String.fromCharCode(...data));
+    // NOTE: Do NOT use `String.fromCharCode(...data)` on large arrays — it can overflow the call stack.
+    // Encode in chunks to keep stack usage bounded.
+    const CHUNK_SIZE = 0x2000; // 8192 bytes per chunk (safe across browsers)
+    const parts: string[] = [];
+    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+      const chunk = data.subarray(i, i + CHUNK_SIZE);
+      parts.push(String.fromCharCode(...chunk));
+    }
+    const base64 = btoa(parts.join(''));
     localStorage.setItem(DB_STORAGE_KEY, base64);
     debugLog('Database saved to storage');
   } catch (error) {

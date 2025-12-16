@@ -17,6 +17,7 @@ export interface AppSettings {
   dangerousGoods: DGSettings;
   unloadEfficiency: UnloadSettings;
   display: DisplaySettings;
+  compliance: ComplianceSettings;
 }
 
 /**
@@ -193,5 +194,27 @@ export interface DisplaySettings {
   showCGTravel: boolean;
   /** Animation speed for AI loading (ms per item) */
   aiAnimationSpeed: number;
+}
+
+/**
+ * Compliance / operational policy settings (audit-facing)
+ *
+ * These settings do not change physics directly, but they do control:
+ * - offline policy
+ * - runtime self-audit requirements
+ * - report generation behavior
+ */
+export interface ComplianceSettings {
+  /** Offline policy for EFB/paperless operation */
+  offlinePolicy: {
+    /** Allow calculations when offline (requires cached data availability) */
+    allowed: boolean;
+    /** Maximum cache age allowed in offline mode */
+    maxCacheAgeHours: number;
+  };
+  /** Require assumptions list on every calculation trace / proof pack */
+  requireAssumptionsDisclosure: boolean;
+  /** Require version labels (software + data hashes) on proof/audit outputs */
+  requireVersionLabels: boolean;
 }
 
