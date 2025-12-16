@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Package, Copy, Check } from 'lucide-react';
+import { Package, Copy, Check, Star } from 'lucide-react';
 import type { CargoItem } from '@core/types';
 
 interface DraggableCargoProps {
@@ -64,6 +64,20 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
       `}
       style={{ touchAction: 'none' }} // Better touch handling for iPad
     >
+      {/* MUST GO marker (set in Inspector) */}
+      {item.mustFly && (
+        <div className="absolute right-0 top-0 z-20">
+          {/* corner flap */}
+          <div className="w-0 h-0 border-t-[22px] border-t-red-500 border-l-[22px] border-l-transparent" />
+          {/* star */}
+          <Star
+            size={12}
+            className="absolute right-[3px] top-[3px] text-white"
+            fill="currentColor"
+          />
+        </div>
+      )}
+
       {/* Vertical material strip (color-coded, full label) */}
       <div className={`absolute left-0 top-0 bottom-0 w-6 ${item.type.color} border-r border-white/10`}>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90">

@@ -12,4 +12,6 @@ export * from './envelope';
 export * from './optimizer';
 export * from './settings';
 export * from './uld';
+export * from './warehouse';
+export * from './auth';
 

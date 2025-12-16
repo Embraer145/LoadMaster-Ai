@@ -14,6 +14,7 @@ import React, { useState, useEffect } from 'react';
 import { Plane, RefreshCw, Calendar as CalendarIcon, Settings, ArrowRight } from 'lucide-react';
 import { WGA_FLEET, WGA_FLIGHT_NUMBERS } from '@data/operators';
 import type { FlightInfo } from '@core/types';
+import avatarUrl from '../../assets/avatar-loadmaster.svg';
 
 // Common cargo airports for selection
 const AIRPORTS = [
@@ -46,6 +47,8 @@ interface HeaderProps {
   onImport: () => void;
   onTestSetup: () => void;
   onOpenSettings?: () => void;
+  onOpenProfile?: () => void;
+  userLabel?: string;
   /** Display a caution badge when aircraft data is sample/simplified */
   isSampleData?: boolean;
 }
@@ -56,6 +59,8 @@ export const Header: React.FC<HeaderProps> = ({
   onImport,
   onTestSetup,
   onOpenSettings,
+  onOpenProfile,
+  userLabel,
   isSampleData,
 }) => {
   const [fleet, setFleet] = useState<'B747' | 'MD11'>('B747');
@@ -218,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex flex-col px-2">
             <label className="text-[8px] font-bold text-slate-500 uppercase">From</label>
             <select 
-              className="bg-transparent text-xs font-bold text-cyan-300 outline-none cursor-pointer w-14" 
+              className="bg-transparent text-xs font-bold text-cyan-300 outline-none cursor-pointer w-16" 
               value={origin} 
               onChange={e => { setOrigin(e.target.value); updateFlight({ origin: e.target.value }); }}
             >
@@ -233,7 +238,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex flex-col px-1">
             <label className="text-[8px] font-bold text-slate-500 uppercase">Via</label>
             <select 
-              className="bg-transparent text-[10px] font-bold text-amber-300 outline-none cursor-pointer w-12" 
+              className="bg-transparent text-[10px] font-bold text-amber-300 outline-none cursor-pointer w-14" 
               value={stopover} 
               onChange={e => { setStopover(e.target.value); updateFlight({ stopover: e.target.value }); }}
             >
@@ -250,7 +255,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex flex-col px-2">
             <label className="text-[8px] font-bold text-slate-500 uppercase">To</label>
             <select 
-              className="bg-transparent text-xs font-bold text-violet-300 outline-none cursor-pointer w-14" 
+              className="bg-transparent text-xs font-bold text-violet-300 outline-none cursor-pointer w-16" 
               value={destination} 
               onChange={e => { setDestination(e.target.value); updateFlight({ destination: e.target.value }); }}
             >
@@ -276,6 +281,26 @@ export const Header: React.FC<HeaderProps> = ({
               style={{ colorScheme: 'dark' }}
             />
           </div>
+
+          {/* Cargo for (moved up beside date; saves vertical space) */}
+          {flight && (
+            <>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="flex flex-col px-2">
+                <label className="text-[8px] font-bold text-slate-500 uppercase">Cargo for</label>
+                <div className="flex items-center gap-1.5">
+                  {flight.stopover && (
+                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-bold whitespace-nowrap">
+                      {flight.stopover}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded text-[10px] font-bold whitespace-nowrap">
+                    {flight.destination}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Actions */}
@@ -296,42 +321,34 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           
           {onOpenSettings && (
-            <button 
-              onClick={onOpenSettings}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"
-              title="Admin Settings"
-            >
-              <Settings size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {onOpenProfile && (
+                <button
+                  onClick={onOpenProfile}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"
+                  title={`Profile${userLabel ? ` (${userLabel})` : ''}`}
+                >
+                  <img
+                    src={avatarUrl}
+                    alt="User profile"
+                    className="w-6 h-6 rounded-full border border-slate-700 bg-slate-950/40"
+                    draggable={false}
+                  />
+                </button>
+              )}
+              <button 
+                onClick={onOpenSettings}
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"
+                title="Admin Settings"
+              >
+                <Settings size={16} />
+              </button>
+            </div>
           )}
         </div>
       </div>
       
-      {/* Route Display */}
-      {flight && (
-        <div className="flex items-center justify-center gap-2 mt-2 text-xs">
-          <span className="text-slate-400">Route:</span>
-          <span className="font-bold text-cyan-300">{flight.origin}</span>
-          {flight.stopover && (
-            <>
-              <ArrowRight size={12} className="text-slate-600" />
-              <span className="font-bold text-amber-300">{flight.stopover}</span>
-            </>
-          )}
-          <ArrowRight size={12} className="text-slate-600" />
-          <span className="font-bold text-violet-300">{flight.destination}</span>
-          <span className="text-slate-600 ml-4">|</span>
-          <span className="text-slate-400 ml-2">Cargo for:</span>
-          {flight.stopover && (
-            <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px] font-bold">
-              {flight.stopover}
-            </span>
-          )}
-          <span className="px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded text-[10px] font-bold">
-            {flight.destination}
-          </span>
-        </div>
-      )}
+      {/* Route Display removed (redundant with dropdowns; saves vertical space) */}
     </nav>
   );
 };

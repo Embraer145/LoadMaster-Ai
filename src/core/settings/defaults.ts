@@ -14,6 +14,7 @@
 import type {
   AppSettings,
   GeneralSettings,
+  StandardWeightsSettings,
   OptimizationSettings,
   DGSettings,
   DGClassRule,
@@ -36,16 +37,29 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
 };
 
 /**
+ * Default standard weights (sample values; adjust to operator policy)
+ */
+export const DEFAULT_STANDARD_WEIGHTS: StandardWeightsSettings = {
+  // Sample placeholder: set to your operator/FAA standard crew total.
+  crewTotalKg: 0,
+  // Typical standard rider/jumpseater weight (sample).
+  standardRiderKg: 90,
+  maxAdditionalRiders: 6,
+  additionalItemsDefaultKg: 0,
+};
+
+/**
  * Default optimization settings
  */
 export const DEFAULT_OPTIMIZATION_SETTINGS: OptimizationSettings = {
-  defaultMode: 'safety',
+  defaultMode: 'fuel_efficiency',
   allowModeChange: true,
   minCGMargin: 2.0, // 2% MAC minimum margin from limits
   fuelEfficientCGTarget: 28.0, // 28% MAC for B747
   maxIterations: 1000,
   checkLateralBalance: true,
   maxLateralImbalance: 5000, // 5000 kg max difference left/right
+  maxAutoloadAttempts: 10,
 };
 
 /**
@@ -375,6 +389,7 @@ export const DEFAULT_UNLOAD_SETTINGS: UnloadSettings = {
  */
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   theme: 'dark',
+  defaultWarehouseSort: 'none',
   showPositionIds: true,
   showWeightOnPositions: true,
   highlightOverweight: true,
@@ -387,6 +402,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   general: DEFAULT_GENERAL_SETTINGS,
+  standardWeights: DEFAULT_STANDARD_WEIGHTS,
   optimization: DEFAULT_OPTIMIZATION_SETTINGS,
   dangerousGoods: DEFAULT_DG_SETTINGS,
   unloadEfficiency: DEFAULT_UNLOAD_SETTINGS,

@@ -19,6 +19,7 @@ interface SettingsState {
   
   // Actions
   updateGeneralSettings: (updates: Partial<AppSettings['general']>) => void;
+  updateStandardWeightsSettings: (updates: Partial<AppSettings['standardWeights']>) => void;
   updateOptimizationSettings: (updates: Partial<AppSettings['optimization']>) => void;
   updateDGSettings: (updates: Partial<AppSettings['dangerousGoods']>) => void;
   updateUnloadSettings: (updates: Partial<AppSettings['unloadEfficiency']>) => void;
@@ -56,6 +57,14 @@ export const useSettingsStore = create<SettingsState>()(
         settings: {
           ...state.settings,
           general: { ...state.settings.general, ...updates },
+        },
+      })),
+
+      // Standard weights
+      updateStandardWeightsSettings: (updates) => set((state) => ({
+        settings: {
+          ...state.settings,
+          standardWeights: { ...state.settings.standardWeights, ...updates },
         },
       })),
       

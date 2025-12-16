@@ -9,6 +9,14 @@ import type { PositionDefinition } from './aircraft';
 import type { CargoItem } from './cargo';
 
 /**
+ * A non-cargo station load (crew/riders/equipment) expressed as a weight applied at a station id.
+ */
+export interface StationLoad {
+  stationId: string;
+  weight: number; // kg
+}
+
+/**
  * A position with its loaded content
  */
 export interface LoadedPosition extends PositionDefinition {
@@ -28,6 +36,10 @@ export interface PhysicsResult {
   zfw: number;
   /** ZFW CG in % MAC */
   zfwCG: number;
+  /** Landing Weight (kg) */
+  lw: number;
+  /** Landing CG in % MAC */
+  lwCG: number;
   /** Total moment (kg * inches) */
   totalMoment: number;
   /** Is aircraft overweight? */

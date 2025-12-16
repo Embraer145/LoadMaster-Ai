@@ -82,6 +82,28 @@ export interface PositionDefinition {
 }
 
 /**
+ * Station category for non-cargo loads (crew, riders, equipment, etc.)
+ */
+export type StationCategory = 'crew' | 'rider' | 'items';
+
+/**
+ * A weight & balance station (non-cargo).
+ * This is intentionally explicit for auditability: each station has an arm.
+ */
+export interface StationDefinition {
+  /** Unique station id */
+  id: string;
+  /** Human label (for UI/manifest) */
+  label: string;
+  /** Arm (station) in inches from datum for moment calculation */
+  arm: number;
+  /** Category */
+  category: StationCategory;
+  /** Optional max count (used for seats/jumpseats) */
+  maxCount?: number;
+}
+
+/**
  * Complete aircraft configuration
  */
 export interface AircraftConfig {
@@ -117,6 +139,8 @@ export interface AircraftConfig {
   mac: MACData;
   /** All cargo positions on this aircraft type */
   positions: PositionDefinition[];
+  /** Non-cargo stations (crew/riders/equipment). Used by Misc/Preflight inputs. */
+  stations?: StationDefinition[];
   /** Default fuel arm for calculations */
   fuelArm: number;
 }

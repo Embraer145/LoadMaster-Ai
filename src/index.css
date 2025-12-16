@@ -30,3 +30,14 @@
   scrollbar-width: none;
 }
 
+/* iPad-style "wiggle" animation for rearrange mode */
+@keyframes lm-wiggle {
+  0% { transform: rotate(-1.5deg) translateY(0); }
+  50% { transform: rotate(1.5deg) translateY(-1px); }
+  100% { transform: rotate(-1.5deg) translateY(0); }
+}
+
+.lm-wiggle {
+  animation: lm-wiggle 120ms ease-in-out infinite;
+}
+

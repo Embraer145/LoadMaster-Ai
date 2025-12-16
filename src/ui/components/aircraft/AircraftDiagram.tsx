@@ -16,9 +16,9 @@
  * - Bulk Cargo Door: RIGHT (Starboard) side, aft
  */
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DoorOpen } from 'lucide-react';
-import type { LoadedPosition, CargoItem, DragState, SelectionState } from '@core/types';
+import type { LoadedPosition, CargoItem, DragState, SelectionState, PhysicsResult } from '@core/types';
 import { DeckSlot } from './DeckSlot';
 
 // Door styling: use a single dedicated color that does NOT collide with cargo/material type colors.
@@ -36,6 +36,25 @@ interface AircraftDiagramProps {
   selection: SelectionState;
   drag: DragState;
   flight: { registration: string; flightNumber: string } | null;
+  mainDeckLateralDeltaKg: number;
+  mainDeckLateralLimitKg: number;
+  lateralCheckEnabled: boolean;
+  optimizationMode: 'safety' | 'fuel_efficiency' | 'unload_efficiency';
+  aiStatus:
+    | null
+    | {
+        phase: 'thinking' | 'placing' | 'repacking' | 'failed' | 'cancelled';
+        attempt: number;
+        maxAttempts: number;
+        message: string;
+        canRetry?: boolean;
+      };
+  onSelectOptimizationMode: (mode: 'safety' | 'fuel_efficiency' | 'unload_efficiency') => void;
+  onClearAll: () => void;
+  physics: PhysicsResult;
+  onOpenNotoc: () => void;
+  onOpenFinalize: () => void;
+  onOpenCaptainBrief: () => void;
   onSelectPosition: (id: string) => void;
   onDragStart: (item: CargoItem, positionId: string) => void;
   onDrop: (positionId: string) => void;
@@ -46,13 +65,71 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
   selection,
   drag,
   flight,
+  mainDeckLateralDeltaKg,
+  mainDeckLateralLimitKg,
+  lateralCheckEnabled,
+  optimizationMode,
+  aiStatus,
+  onSelectOptimizationMode,
+  onClearAll,
+  physics,
+  onOpenNotoc,
+  onOpenFinalize,
+  onOpenCaptainBrief,
   onSelectPosition,
   onDragStart,
   onDrop,
 }) => {
   const getPosition = (id: string) => positions.find(p => p.id === id)!;
 
-  const renderSlot = (id: string) => (
+  const [rearrangePointer, setRearrangePointer] = useState<{
+    pointerId: number;
+    x: number;
+    y: number;
+    sourceId: string;
+  } | null>(null);
+  const [rearrangeOverId, setRearrangeOverId] = useState<string | null>(null);
+
+  const isRearranging = useMemo(() => {
+    return !!rearrangePointer && !!drag.item && drag.source === rearrangePointer.sourceId;
+  }, [rearrangePointer, drag.item, drag.source]);
+
+  useEffect(() => {
+    if (!rearrangePointer) return;
+
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== rearrangePointer.pointerId) return;
+      setRearrangePointer(prev => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const slotEl = el?.closest?.('[data-position-id]') as HTMLElement | null;
+      const over = slotEl?.dataset?.positionId ?? null;
+      setRearrangeOverId(over);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== rearrangePointer.pointerId) return;
+      const target = rearrangeOverId ?? rearrangePointer.sourceId;
+      if (target) {
+        onDrop(target); // store logic will auto-swap if occupied
+      }
+      setRearrangePointer(null);
+      setRearrangeOverId(null);
+    };
+
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onUp, { passive: true });
+    window.addEventListener('pointercancel', onUp, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rearrangePointer, rearrangeOverId]);
+
+  const renderSlot = (id: string, opts?: { sizeVariant?: 'normal' | 'compact' }) => (
     <DeckSlot 
       position={getPosition(id)} 
       isActive={selection.id === id && selection.source === 'slot'} 
@@ -60,18 +137,29 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
       onClick={() => onSelectPosition(id)} 
       onDragStart={(item) => onDragStart(item, id)} 
       onDrop={onDrop} 
+      sizeVariant={opts?.sizeVariant ?? 'normal'}
+      onLongPressRearrangeStart={(item, positionId, pointerId, x, y) => {
+        // Keep the current "tap slot -> envelope" behavior.
+        // Long-press is a separate gesture that starts rearrange mode.
+        onSelectPosition(positionId);
+        onDragStart(item, positionId);
+        setRearrangePointer({ pointerId, x, y, sourceId: positionId });
+        setRearrangeOverId(positionId);
+      }}
+      isRearrangeSource={isRearranging && rearrangePointer?.sourceId === id}
+      isRearrangeOver={isRearranging && rearrangeOverId === id}
     />
   );
 
   return (
-    <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 relative shadow-2xl overflow-x-auto">
+    <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-5 relative shadow-2xl overflow-x-auto">
       {/* Header */}
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h2 className="text-2xl font-black italic tracking-tighter text-slate-700">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-2xl font-black italic tracking-tighter text-slate-700 leading-none">
             BOEING 747-400F
           </h2>
-          <span className="text-xs font-mono text-slate-500">
+          <span className="text-xs font-mono text-slate-500 whitespace-nowrap">
             {flight ? `${flight.registration} • ${flight.flightNumber}` : 'NO FLIGHT SELECTED'}
           </span>
         </div>
@@ -87,7 +175,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
       </div>
 
       {/* ============ MAIN DECK ============ */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-xs font-bold text-slate-400 uppercase">Main Deck</h3>
           <span className="text-[10px] text-slate-600">• 33 positions • PMC/P6P pallets</span>
@@ -104,7 +192,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
           </div>
 
           {/* Aircraft Outline */}
-          <div className="bg-slate-800/30 border-2 border-slate-700 rounded-l-[60px] rounded-r-[30px] p-4 pb-10">
+          <div className="bg-slate-800/30 border-2 border-slate-700 rounded-l-[60px] rounded-r-[30px] p-4 pb-8">
             {/* Side labels */}
             <div className="flex justify-between text-[8px] text-slate-500 font-bold mb-2">
               <span>NOSE ←</span>
@@ -113,7 +201,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
             </div>
             
             {/* Main Deck Layout - Two rows with nose section inline */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-0.5">
               {/* RIGHT (Starboard) Row - Top */}
               <div className="flex items-center gap-0.5">
                 {/* Nose - A2 on starboard */}
@@ -159,13 +247,13 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
               <div className="flex items-center">
                 {/* B1 in the nose area (centered between rows) */}
                 <div className={`flex gap-0.5 p-1 ${DOOR.bg} border ${DOOR.border} rounded`}>
-                  <div className="w-9">{renderSlot('B1')}</div>
+                  <div className="w-9">{renderSlot('B1', { sizeVariant: 'compact' })}</div>
                 </div>
                 
                 {/* Aisle indicator */}
-                <div className="flex-1 flex items-center justify-center ml-1">
+                <div className="flex-1 flex items-center justify-center ml-1 h-4">
                   <div className="flex-1 border-t border-dashed border-slate-700"></div>
-                  <span className="px-2 text-[7px] text-slate-600">AISLE</span>
+                  <span className="px-2 text-[7px] text-slate-600 leading-none">AISLE</span>
                   <div className="flex-1 border-t border-dashed border-slate-700"></div>
                 </div>
               </div>
@@ -227,6 +315,32 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
         </div>
       </div>
 
+      {/* Rearrange drag "ghost" (iPad long-press) */}
+      {isRearranging && drag.item && rearrangePointer && (
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{
+            left: rearrangePointer.x,
+            top: rearrangePointer.y,
+            transform: 'translate(-50%, -70%)',
+          }}
+        >
+          <div className="px-3 py-2 rounded-xl bg-slate-950/90 border border-slate-700 shadow-2xl">
+            <div className="flex items-center gap-2">
+              <span className="text-lg leading-none">{drag.item.dest.flag}</span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-white tracking-wider">
+                  {drag.item.dest.code} • {(drag.item.weight / 1000).toFixed(1)}t
+                </div>
+                <div className="text-[9px] text-slate-400 font-mono truncate max-w-[200px]">
+                  Hold & drag to swap
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ============ LOWER DECK ============ */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -234,11 +348,12 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
           <span className="text-[10px] text-slate-600">• 11 positions • LD3/LD1 containers</span>
         </div>
         
-        <div className="relative inline-block">
+        <div className="flex items-start gap-4">
+          <div className="relative inline-block">
 
-          {/* Aircraft Outline */}
-          <div className="bg-slate-800/30 border-2 border-slate-700 rounded-l-[40px] rounded-r-[20px] p-3 pb-6">
-            <div className="flex items-center gap-3">
+            {/* Aircraft Outline */}
+            <div className="bg-slate-800/30 border-2 border-slate-700 rounded-l-[40px] rounded-r-[20px] p-3 pb-6">
+              <div className="flex items-center gap-3">
               {/* Forward Hold - door on starboard */}
               <div className="relative flex flex-col">
                 <span className="text-[8px] text-slate-500 mb-1">FWD HOLD</span>
@@ -311,18 +426,174 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                   </div>
                 </div>
               </div>
+              </div>
+            </div>
+
+            {/* Optimization mode buttons (separate dark panel under lower deck) */}
+            <div className="mt-5 bg-slate-950/60 border border-slate-800 rounded-2xl px-4 py-3 shadow-inner">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  AI Auto-Load
+                </div>
+                {aiStatus && (
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    {aiStatus.phase === 'repacking'
+                      ? `Repacking ${aiStatus.attempt}/${aiStatus.maxAttempts}…`
+                      : aiStatus.phase === 'placing'
+                        ? `Placing (attempt ${aiStatus.attempt}/${aiStatus.maxAttempts})…`
+                        : aiStatus.phase === 'thinking'
+                          ? 'Thinking…'
+                          : aiStatus.phase === 'failed'
+                            ? 'Failed'
+                            : 'Cancelled'}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <ModePill
+                    label="SAFETY"
+                    active={optimizationMode === 'safety'}
+                    disabled={!!aiStatus}
+                    onClick={() => onSelectOptimizationMode('safety')}
+                  />
+                  <ModePill
+                    label="FUEL EFF"
+                    active={optimizationMode === 'fuel_efficiency'}
+                    disabled={!!aiStatus}
+                    onClick={() => onSelectOptimizationMode('fuel_efficiency')}
+                  />
+                  <ModePill
+                    label="UNLOAD"
+                    active={optimizationMode === 'unload_efficiency'}
+                    disabled={!!aiStatus}
+                    onClick={() => onSelectOptimizationMode('unload_efficiency')}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={onClearAll}
+                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 text-[10px] font-bold uppercase tracking-wider hover:bg-red-900/20 hover:text-red-200"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right-side corner stack (L/R + Dispatch/Actions) */}
+          <div className="hidden sm:flex min-w-[240px] max-w-[280px] flex-col gap-3">
+            {/* L/R */}
+            <div className="p-3 bg-slate-800/30 rounded border border-slate-700 text-[10px] text-slate-400">
+              <div className="font-bold text-slate-300 uppercase tracking-wider text-[10px] mb-2">
+                Main Deck L/R Balance
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-slate-500">Δ(L−R)</div>
+                <div className={`px-2 py-1 rounded-lg border text-[11px] font-bold whitespace-nowrap tabular-nums ${
+                  !lateralCheckEnabled
+                    ? 'bg-slate-800/40 text-slate-200 border-slate-700'
+                    : (mainDeckLateralDeltaKg <= mainDeckLateralLimitKg
+                        ? 'bg-slate-800/40 text-slate-200 border-slate-700'
+                        : 'bg-amber-500/15 text-amber-200 border-amber-500/30')
+                }`}>
+                  {(mainDeckLateralDeltaKg / 1000).toFixed(1)}t
+                </div>
+              </div>
+              {lateralCheckEnabled && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
+                  <div className="text-slate-500">
+                    Limit: {(mainDeckLateralLimitKg / 1000).toFixed(1)}t
+                  </div>
+                  {mainDeckLateralDeltaKg > mainDeckLateralLimitKg && (
+                    <div className="text-amber-300 font-bold whitespace-nowrap">
+                      Caution
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="mt-2 text-[9px] text-slate-500">
+                L/R modeled on MAIN deck only (LOWER treated as centerline).
+              </div>
+            </div>
+
+            {/* Dispatch + actions */}
+            <div className={`p-3 rounded border text-[10px] ${
+              physics.isOverweight || physics.isUnbalanced
+                ? 'bg-red-900/20 border-red-900/50 text-red-300'
+                : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-300'
+            }`}>
+              <div className="font-bold text-[12px] uppercase tracking-wider">
+                {physics.isOverweight || physics.isUnbalanced ? 'Restricted' : 'Ready for Dispatch'}
+              </div>
+              <div className="mt-1 text-[10px] opacity-80">
+                ZFW: {(physics.zfw / 1000).toFixed(1)}t
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onOpenNotoc}
+                  className="flex-1 bg-slate-900/40 border border-slate-700 text-slate-200 py-2 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-900/60"
+                >
+                  NOTOC
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenFinalize}
+                  disabled={physics.isOverweight || physics.isUnbalanced}
+                  className="flex-1 bg-emerald-600 disabled:opacity-50 text-white py-2 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500"
+                >
+                  Finalize
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenCaptainBrief}
+                className="mt-2 w-full bg-slate-900/40 border border-slate-700 text-slate-200 py-2 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-900/60"
+              >
+                W&amp;B PDF
+              </button>
             </div>
           </div>
         </div>
       </div>
       
-      {/* Orientation Reference */}
-      <div className="mt-4 p-2 bg-slate-800/30 rounded border border-slate-700 text-[9px] text-slate-500">
-        <div className="flex items-center justify-between">
-          <span><strong>View:</strong> Plan (looking down) | <strong>Nose:</strong> Left | <strong>Tail:</strong> Right</span>
-          <span><strong>Top row (R):</strong> Starboard (right when facing nose) | <strong>Bottom row (L):</strong> Port (left when facing nose)</span>
+      {/* Compact L/R balance summary (small screens) */}
+      <div className="mt-3 sm:hidden p-2 bg-slate-800/30 rounded border border-slate-700 text-[9px] text-slate-500">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold text-slate-300 uppercase tracking-wider">Δ(L−R)</span>
+          <span className="font-mono tabular-nums text-slate-200">{(mainDeckLateralDeltaKg / 1000).toFixed(1)}t</span>
         </div>
+        {lateralCheckEnabled && (
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span>Limit {(mainDeckLateralLimitKg / 1000).toFixed(1)}t</span>
+            {mainDeckLateralDeltaKg > mainDeckLateralLimitKg && <span className="text-amber-300 font-bold">Caution</span>}
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+const ModePill: React.FC<{
+  label: string;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}> = ({ label, active, disabled, onClick }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${
+      active
+        ? 'bg-blue-600 text-white border-blue-500'
+        : 'bg-slate-900/40 text-slate-300 border-slate-700 hover:bg-slate-900/60'
+    } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+  >
+    {label}
+  </button>
+);

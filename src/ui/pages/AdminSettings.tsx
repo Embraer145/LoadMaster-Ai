@@ -17,13 +17,16 @@ import {
   Shield,
   Fuel,
   Clock,
+  Scale,
   X,
 } from 'lucide-react';
 import { useSettingsStore, useSettings } from '@core/settings';
 import type { OptimizationMode } from '@core/optimizer/types';
+import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
+import { useLoadPlanStore } from '@store/loadPlanStore';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
 
-type SettingsTab = 'general' | 'optimization' | 'dg' | 'unload' | 'display';
+type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display';
 
 interface AdminSettingsProps {
   onClose: () => void;
@@ -34,6 +37,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
   const settings = useSettings();
   const { 
     updateGeneralSettings,
+    updateStandardWeightsSettings,
     updateOptimizationSettings, 
     updateDGSettings,
     updateUnloadSettings,
@@ -44,6 +48,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'general', label: 'General', icon: <Settings size={16} /> },
+    { id: 'standardWeights', label: 'Standard Weights', icon: <Scale size={16} /> },
     { id: 'optimization', label: 'AI Optimization', icon: <Zap size={16} /> },
     { id: 'dg', label: 'Dangerous Goods', icon: <AlertTriangle size={16} /> },
     { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} /> },
@@ -116,6 +121,13 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
                   settings={settings.general}
                   onUpdate={updateGeneralSettings}
                   onReset={() => resetSection('general')}
+                />
+              )}
+              {activeTab === 'standardWeights' && (
+                <StandardWeightsPanel
+                  settings={settings.standardWeights}
+                  onUpdate={updateStandardWeightsSettings}
+                  onReset={() => resetSection('standardWeights')}
                 />
               )}
               {activeTab === 'optimization' && (
@@ -241,6 +253,76 @@ const GeneralSettingsPanel: React.FC<PanelProps<typeof import('@core/settings').
   </div>
 );
 
+// Standard Weights Panel
+const StandardWeightsPanel: React.FC<PanelProps<typeof import('@core/settings').DEFAULT_SETTINGS.standardWeights>> = ({
+  settings, onUpdate, onReset
+}) => (
+  <div>
+    <SectionHeader
+      title="Standard Weights"
+      description="Audit-facing standard weights used in calculations (set per operator/FAA policy)."
+      onReset={onReset}
+    />
+
+    <SettingRow
+      label="Crew Total Weight (kg)"
+      description="Fixed crew total weight used for W&B. Set this according to your operator standard weight policy."
+    >
+      <input
+        type="number"
+        value={settings.crewTotalKg}
+        onChange={(e) => onUpdate({ crewTotalKg: parseInt(e.target.value) || 0 })}
+        className="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+        min={0}
+        step={1}
+      />
+    </SettingRow>
+
+    <SettingRow
+      label="Standard Additional Rider Weight (kg)"
+      description="Used for jumpseaters/extra riders (unless overridden later)."
+    >
+      <input
+        type="number"
+        value={settings.standardRiderKg}
+        onChange={(e) => onUpdate({ standardRiderKg: parseInt(e.target.value) || 0 })}
+        className="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+        min={0}
+        step={1}
+      />
+    </SettingRow>
+
+    <SettingRow
+      label="Max Additional Riders"
+      description="Upper bound for UI controls (0–6 typical for this simulator)."
+    >
+      <input
+        type="number"
+        value={settings.maxAdditionalRiders}
+        onChange={(e) => onUpdate({ maxAdditionalRiders: Math.max(0, Math.min(6, parseInt(e.target.value) || 0)) })}
+        className="w-20 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+        min={0}
+        max={6}
+        step={1}
+      />
+    </SettingRow>
+
+    <SettingRow
+      label="Additional Items Default (kg)"
+      description="Convenience default for catering/equipment/misc items."
+    >
+      <input
+        type="number"
+        value={settings.additionalItemsDefaultKg}
+        onChange={(e) => onUpdate({ additionalItemsDefaultKg: parseInt(e.target.value) || 0 })}
+        className="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+        min={0}
+        step={1}
+      />
+    </SettingRow>
+  </div>
+);
+
 // Optimization Settings Panel
 const OptimizationSettingsPanel: React.FC<PanelProps<typeof import('@core/settings').DEFAULT_SETTINGS.optimization>> = ({
   settings, onUpdate, onReset
@@ -260,7 +342,10 @@ const OptimizationSettingsPanel: React.FC<PanelProps<typeof import('@core/settin
         description="Maximum CG margin from limits"
         icon={<Shield className="w-5 h-5" />}
         selected={settings.defaultMode === 'safety'}
-        onSelect={() => onUpdate({ defaultMode: 'safety' })}
+        onSelect={() => {
+          onUpdate({ defaultMode: 'safety' });
+          useLoadPlanStore.getState().setOptimizationMode('safety');
+        }}
       />
       <ModeCard 
         mode="fuel_efficiency"
@@ -268,7 +353,10 @@ const OptimizationSettingsPanel: React.FC<PanelProps<typeof import('@core/settin
         description="Aft CG for reduced drag"
         icon={<Fuel className="w-5 h-5" />}
         selected={settings.defaultMode === 'fuel_efficiency'}
-        onSelect={() => onUpdate({ defaultMode: 'fuel_efficiency' })}
+        onSelect={() => {
+          onUpdate({ defaultMode: 'fuel_efficiency' });
+          useLoadPlanStore.getState().setOptimizationMode('fuel_efficiency');
+        }}
       />
       <ModeCard 
         mode="unload_efficiency"
@@ -276,7 +364,10 @@ const OptimizationSettingsPanel: React.FC<PanelProps<typeof import('@core/settin
         description="Optimized for unloading"
         icon={<Clock className="w-5 h-5" />}
         selected={settings.defaultMode === 'unload_efficiency'}
-        onSelect={() => onUpdate({ defaultMode: 'unload_efficiency' })}
+        onSelect={() => {
+          onUpdate({ defaultMode: 'unload_efficiency' });
+          useLoadPlanStore.getState().setOptimizationMode('unload_efficiency');
+        }}
       />
     </div>
 
@@ -320,6 +411,17 @@ const OptimizationSettingsPanel: React.FC<PanelProps<typeof import('@core/settin
         min={1000}
         max={20000}
         step={500}
+      />
+    </SettingRow>
+    <SettingRow label="Max Autoload Attempts" description="Bounded repack retries when auto-load can’t place everything (default 10)">
+      <input
+        type="number"
+        value={settings.maxAutoloadAttempts}
+        onChange={(e) => onUpdate({ maxAutoloadAttempts: Math.max(1, Math.min(50, parseInt(e.target.value) || 1)) })}
+        className="w-20 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white text-center"
+        min={1}
+        max={50}
+        step={1}
       />
     </SettingRow>
   </div>
@@ -406,6 +508,20 @@ const DisplaySettingsPanel: React.FC<PanelProps<typeof import('@core/settings').
       onReset={onReset}
     />
     
+    <SettingRow label="Default Warehouse Sort" description="Initial sort mode for the Payload staging bar">
+      <select
+        value={settings.defaultWarehouseSort}
+        onChange={(e) => onUpdate({ defaultWarehouseSort: e.target.value as typeof settings.defaultWarehouseSort })}
+        className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white min-w-[220px]"
+      >
+        {WAREHOUSE_SORT_MODES.map((m) => (
+          <option key={m} value={m}>
+            {WAREHOUSE_SORT_LABEL[m]}
+          </option>
+        ))}
+      </select>
+    </SettingRow>
+
     <SettingRow label="Theme">
       <select 
         value={settings.theme}

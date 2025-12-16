@@ -22,6 +22,8 @@ interface FlightEnvelopeProps {
   currentCG: number;      // %MAC
   zfw: number;            // Zero Fuel Weight
   zfwCG: number;          // ZFW CG %MAC
+  lw: number;             // Landing Weight
+  lwCG: number;           // Landing CG %MAC
   fwdLimit: number;       // Forward CG limit
   aftLimit: number;       // Aft CG limit
   fuel: number;           // Fuel weight
@@ -49,16 +51,12 @@ const macToIndex = (mac: number): number => {
 const CHART = {
   width: 500,
   height: 350,
-  margin: { top: 40, right: 80, bottom: 50, left: 70 },
+  // Reduce left margin to widen the plot area (more envelope width, less dead space).
+  margin: { top: 34, right: 80, bottom: 44, left: 52 },
 };
 
 const plotWidth = CHART.width - CHART.margin.left - CHART.margin.right;
 const plotHeight = CHART.height - CHART.margin.top - CHART.margin.bottom;
-
-// Scale functions
-const xScale = (index: number): number => {
-  return CHART.margin.left + (index / 100) * plotWidth;
-};
 
 const yScale = (weight: number): number => {
   const range = LIMITS.MAX_WEIGHT - LIMITS.MIN_WEIGHT;
@@ -70,6 +68,8 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   currentCG,
   zfw,
   zfwCG,
+  lw,
+  lwCG,
   fwdLimit,
   aftLimit,
   fuel,
@@ -78,6 +78,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   // Convert to index units
   const towIndex = macToIndex(currentCG);
   const zfwIndex = macToIndex(zfwCG);
+  const lwIndex = macToIndex(lwCG);
   const fwdIndex = macToIndex(fwdLimit);
   const aftIndex = macToIndex(aftLimit);
   const targetIndex = macToIndex(27); // Target CG around 27% MAC
@@ -87,12 +88,40 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   const zfwEnvelope = getB747Envelope('zero_fuel');
   const landingEnvelope = getB747Envelope('landing');
 
+  // Auto-zoom X domain so we don't waste horizontal space when the envelope only uses ~10-75 Index.
+  const allIndices: number[] = [
+    ...takeoffEnvelope.forwardLimit.points.map(p => macToIndex(p.cgPercent)),
+    ...takeoffEnvelope.aftLimit.points.map(p => macToIndex(p.cgPercent)),
+    ...zfwEnvelope.forwardLimit.points.map(p => macToIndex(p.cgPercent)),
+    ...zfwEnvelope.aftLimit.points.map(p => macToIndex(p.cgPercent)),
+    ...landingEnvelope.forwardLimit.points.map(p => macToIndex(p.cgPercent)),
+    ...landingEnvelope.aftLimit.points.map(p => macToIndex(p.cgPercent)),
+    towIndex,
+    zfwIndex,
+    lwIndex,
+    fwdIndex,
+    aftIndex,
+    targetIndex,
+  ];
+
+  const minNeeded = Math.max(0, Math.min(...allIndices) - 5);
+  const maxNeeded = Math.min(100, Math.max(...allIndices) + 5);
+
+  const xDomainMin = Math.max(0, Math.floor(minNeeded / 10) * 10);
+  const xDomainMax = Math.min(100, Math.ceil(maxNeeded / 10) * 10);
+  const xDomainSpan = Math.max(10, xDomainMax - xDomainMin);
+
+  const xScale = (index: number): number => {
+    return CHART.margin.left + ((index - xDomainMin) / xDomainSpan) * plotWidth;
+  };
+
   // Validate points against the correct envelope (this avoids ZFW being judged against takeoff)
   const towValidation = validateAgainstEnvelope(currentWeight, currentCG, takeoffEnvelope);
   const zfwValidation = validateAgainstEnvelope(zfw, zfwCG, zfwEnvelope);
+  const lwValidation = validateAgainstEnvelope(lw, lwCG, landingEnvelope);
 
   // Check if within limits (primary status based on takeoff point)
-  const isWithinLimits = towValidation.isValid;
+  const isWithinLimits = towValidation.isValid && zfwValidation.isValid && lwValidation.isValid;
   
   // Build envelope polygons from envelope boundaries (forward + aft reversed)
   const envelopeToPolygon = (env: typeof takeoffEnvelope): string => {
@@ -109,11 +138,18 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
   // Y-axis ticks
   const yTicks = [150000, 200000, 250000, 300000, 350000, 400000];
   
-  // X-axis ticks (Index)
-  const xTicks = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  // X-axis ticks (Index), matched to zoomed domain
+  const xTicks = Array.from(
+    { length: Math.floor((xDomainMax - xDomainMin) / 10) + 1 },
+    (_, i) => xDomainMin + i * 10
+  );
   
   // %MAC reference scale
   const macTicks = [10, 14, 18, 22, 26, 30, 34, 38, 42];
+  const visibleMacTicks = macTicks.filter(mac => {
+    const idx = macToIndex(mac);
+    return idx >= xDomainMin && idx <= xDomainMax;
+  });
 
   return (
     <div className={
@@ -122,7 +158,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
         : 'bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-lg min-h-[420px] flex flex-col'
     }>
       {/* Header */}
-      <div className="flex justify-between items-start mb-2">
+      <div className="flex justify-between items-start mb-1">
         <div>
           <h3 className="text-sm font-bold text-white uppercase tracking-wide">
             Weight & Balance Envelope
@@ -142,7 +178,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
       </div>
 
       {/* Why out of limits? (high-signal explainer) */}
-      {(!towValidation.isValid || !zfwValidation.isValid) && (
+      {(!towValidation.isValid || !zfwValidation.isValid || !lwValidation.isValid) && (
         <div className="mb-2 bg-slate-950/60 border border-slate-800 rounded-lg p-2">
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
             Why out of limits?
@@ -161,6 +197,14 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
                 <span className="font-bold text-blue-300">ZFW (ZFW Env.):</span>{' '}
                 <span className="text-slate-200">
                   {(zfwValidation.violations.find(v => v.severity === 'error') ?? zfwValidation.violations[0])?.message ?? 'Out of limits'}
+                </span>
+              </div>
+            )}
+            {!lwValidation.isValid && (
+              <div>
+                <span className="font-bold text-amber-300">LW (Landing Env.):</span>{' '}
+                <span className="text-slate-200">
+                  {(lwValidation.violations.find(v => v.severity === 'error') ?? lwValidation.violations[0])?.message ?? 'Out of limits'}
                 </span>
               </div>
             )}
@@ -243,7 +287,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
             >
               %MAC
             </text>
-            {macTicks.map(mac => (
+            {visibleMacTicks.map(mac => (
               <g key={`mac-${mac}`}>
                 <text 
                   x={xScale(macToIndex(mac))} 
@@ -262,7 +306,7 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
           {/* Axis labels */}
           <text 
             x={CHART.width / 2} 
-            y={CHART.height - 8} 
+            y={CHART.height - 12} 
             textAnchor="middle" 
             fill="#94a3b8" 
             fontSize="10" 
@@ -417,6 +461,18 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
             strokeWidth="2"
             strokeDasharray="6 3"
           />
+
+          {/* Burn Path (TOW to LW) */}
+          <line
+            x1={xScale(towIndex)}
+            y1={yScale(currentWeight)}
+            x2={xScale(lwIndex)}
+            y2={yScale(lw)}
+            stroke="#f59e0b"
+            strokeWidth="2"
+            strokeDasharray="6 3"
+            opacity="0.7"
+          />
           
           {/* Fuel Burn Path Annotation */}
           {fuel > 0 && (
@@ -478,6 +534,24 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
             stroke="white" 
             strokeWidth="2"
           />
+          {/* LW Point */}
+          <circle
+            cx={xScale(lwIndex)}
+            cy={yScale(lw)}
+            r="6"
+            fill="#f59e0b"
+            stroke="white"
+            strokeWidth="2"
+          />
+          <text
+            x={xScale(lwIndex) + 10}
+            y={yScale(lw) + 14}
+            fill="#f59e0b"
+            fontSize="9"
+            fontWeight="bold"
+          >
+            LW
+          </text>
           <text 
             x={xScale(towIndex) + 10} 
             y={yScale(currentWeight) - 10} 
@@ -488,36 +562,41 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
             TOW
           </text>
           
-          {/* Legend */}
-          <g transform={`translate(${CHART.margin.left + 10}, ${CHART.height - CHART.margin.bottom - 72})`}>
-            <rect x="0" y="0" width="110" height="67" fill="#0f172a" stroke="#475569" rx="3" />
+          {/* Legend (narrow, right-side, avoids covering envelope) */}
+          {/* Place legend in the right margin column, aligned with the MTOW label box */}
+          <g transform={`translate(${CHART.width - CHART.margin.right + 5}, ${CHART.height - CHART.margin.bottom - 74})`}>
+            <rect x="0" y="0" width="70" height="74" fill="#0f172a" stroke="#475569" rx="3" />
             
             <circle cx="10" cy="12" r="4" fill="#3b82f6" />
-            <text x="18" y="15" fill="#94a3b8" fontSize="8">ZFW Point</text>
+            <text x="18" y="15" fill="#94a3b8" fontSize="8">ZFW</text>
             
             <circle cx="10" cy="26" r="4" fill="#10b981" />
-            <text x="18" y="29" fill="#94a3b8" fontSize="8">TOW Point</text>
+            <text x="18" y="29" fill="#94a3b8" fontSize="8">TOW</text>
+
+            <circle cx="10" cy="40" r="4" fill="#f59e0b" />
+            <text x="18" y="43" fill="#94a3b8" fontSize="8">LW</text>
             
-            <line x1="5" y1="40" x2="15" y2="40" stroke="#22c55e" strokeWidth="2" />
-            <text x="18" y="43" fill="#94a3b8" fontSize="8">Takeoff Env.</text>
+            <line x1="5" y1="54" x2="15" y2="54" stroke="#22c55e" strokeWidth="2" />
+            <text x="18" y="57" fill="#94a3b8" fontSize="8">TO Env</text>
 
-            <line x1="5" y1="52" x2="15" y2="52" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="3 2" />
-            <text x="18" y="55" fill="#94a3b8" fontSize="8">ZFW Env.</text>
+            <line x1="5" y1="66" x2="15" y2="66" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="3 2" />
+            <text x="18" y="69" fill="#94a3b8" fontSize="8">ZFW Env</text>
 
-            <line x1="5" y1="64" x2="15" y2="64" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 2" />
-            <text x="18" y="67" fill="#94a3b8" fontSize="8">Landing Env.</text>
+            {/* landing env is shown by amber dashed polygon */}
           </g>
         </svg>
       </div>
       
-      {/* Data Summary Footer */}
-      <div className="grid grid-cols-4 gap-1 mt-2 bg-slate-800/50 rounded-lg p-2">
-        <DataCell label="ZFW" value={`${(zfw/1000).toFixed(1)}t`} subValue={`${zfwCG.toFixed(1)}%`} color="blue" />
-        <DataCell label="FUEL" value={`${(fuel/1000).toFixed(1)}t`} color="slate" />
-        <DataCell label="TOW" value={`${(currentWeight/1000).toFixed(1)}t`} subValue={`${currentCG.toFixed(1)}%`} color="emerald" />
-        <DataCell 
-          label="CG MARGIN" 
-          value={`${Math.min(currentCG - fwdLimit, aftLimit - currentCG).toFixed(1)}%`} 
+      {/* Data Summary Footer (6 values, replaces the removed dials) */}
+      <div className="grid grid-cols-6 gap-1 mt-2 bg-slate-800/50 rounded-lg p-2">
+        <DataCell label="ZFW" value={`${(zfw/1000).toFixed(1)}t`} color="blue" />
+        <DataCell label="TOW" value={`${(currentWeight/1000).toFixed(1)}t`} color="emerald" />
+        <DataCell label="LW" value={`${(lw/1000).toFixed(1)}t`} color="amber" />
+        <DataCell label="GROSS WT" value={`${(currentWeight/1000).toFixed(1)}t`} color="slate" />
+        <DataCell label="CG" value={`${currentCG.toFixed(1)}%`} color="slate" />
+        <DataCell
+          label="CG MARGIN"
+          value={`${Math.min(currentCG - fwdLimit, aftLimit - currentCG).toFixed(1)}%`}
           color={Math.min(currentCG - fwdLimit, aftLimit - currentCG) < 3 ? 'amber' : 'slate'}
         />
       </div>
@@ -529,6 +608,9 @@ export const FlightEnvelope: React.FC<FlightEnvelopeProps> = ({
         </span>
         <span>
           TOW: <span className={towValidation.isValid ? 'text-slate-300' : 'text-amber-300'}>{towValidation.isValid ? 'IN TAKEOFF ENVELOPE' : 'OUT OF TAKEOFF ENVELOPE'}</span>
+        </span>
+        <span>
+          LW: <span className={lwValidation.isValid ? 'text-slate-300' : 'text-amber-300'}>{lwValidation.isValid ? 'IN LANDING ENVELOPE' : 'OUT OF LANDING ENVELOPE'}</span>
         </span>
       </div>
     </div>

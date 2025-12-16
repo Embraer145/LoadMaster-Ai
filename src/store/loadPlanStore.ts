@@ -52,6 +52,29 @@ export interface RouteStop {
   isDestination: boolean;
 }
 
+interface LegFuel {
+  /** Block/Ramp fuel for this leg (kg) */
+  blockFuelKg: number;
+  /** Taxi fuel burned before takeoff (kg) */
+  taxiFuelKg: number;
+  /** Trip burn to landing (kg) */
+  tripBurnKg: number;
+}
+
+interface LegMisc {
+  /** Flight crew count (min 2, max 4 for this simulator UI) */
+  crewCount: number;
+  /** Additional items/equipment weights (kg) */
+  itemsFwdKg: number;
+  itemsAftKg: number;
+  itemsOtherKg: number;
+}
+
+interface LegInputs {
+  fuel: LegFuel;
+  misc: LegMisc;
+}
+
 /**
  * Store state interface
  */
@@ -68,7 +91,10 @@ interface LoadPlanState {
   // Load state
   positions: LoadedPosition[];
   warehouse: CargoItem[];
-  fuel: number;
+  /** Active leg index (0-based). If a stopover exists, there are 2 legs (0 and 1). */
+  activeLegIndex: number;
+  /** Inputs per leg (fuel + misc loads) */
+  legs: LegInputs[];
   
   // Computed physics
   physics: PhysicsResult;
@@ -76,7 +102,16 @@ interface LoadPlanState {
   // UI state
   selection: SelectionState;
   drag: DragState;
-  aiStatus: 'thinking' | 'placing' | null;
+  aiStatus:
+    | null
+    | {
+        phase: 'thinking' | 'placing' | 'repacking' | 'failed' | 'cancelled';
+        attempt: number;
+        maxAttempts: number;
+        message: string;
+        canRetry?: boolean;
+      };
+  aiCancelRequested: boolean;
   optimizationMode: OptimizationMode;
   
   // Modal state
@@ -86,7 +121,14 @@ interface LoadPlanState {
   // Actions
   setFlight: (flight: FlightInfo | null) => void;
   setRoute: (route: RouteStop[]) => void;
+  /** Set block/ramp fuel for the active leg (kg) */
   setFuel: (fuel: number) => void;
+  /** Select which leg is active for W&B calculations + envelope display */
+  setActiveLegIndex: (idx: number) => void;
+  /** Update fuel for a specific leg */
+  updateLegFuel: (idx: number, updates: Partial<LegFuel>) => void;
+  /** Update misc loads for a specific leg */
+  updateLegMisc: (idx: number, updates: Partial<LegMisc>) => void;
   setOptimizationMode: (mode: OptimizationMode) => void;
   
   // Cargo actions
@@ -114,6 +156,8 @@ interface LoadPlanState {
   
   // AI optimization
   runAiOptimization: () => Promise<void>;
+  cancelAiOptimization: () => void;
+  toggleMustFly: (cargoId: string) => void;
   
   // Modal actions
   setShowFinalize: (show: boolean) => void;
@@ -208,6 +252,7 @@ function generateManifest(count: number = 35, route: RouteStop[]): CargoItem[] {
       origin: origin,
       preferredDeck: isMain ? 'MAIN' : 'LOWER',
       offloadPoint: dest.code, // Cargo gets offloaded at its destination
+      mustFly: false,
       uldType,
       compatibleDoors,
       handlingFlags: deriveHandlingFlags(CARGO_TYPES[typeKey].code),
@@ -263,13 +308,77 @@ function initializePositions(config: AircraftConfig): LoadedPosition[] {
   }));
 }
 
+function legCountForFlight(flight: FlightInfo | null): number {
+  if (!flight) return 1;
+  return flight.stopover ? 2 : 1;
+}
+
+function createDefaultLegs(count: number): LegInputs[] {
+  const std = useSettingsStore.getState().settings.standardWeights;
+  return Array.from({ length: count }, () => ({
+    fuel: {
+      blockFuelKg: 40000,
+      taxiFuelKg: 0,
+      tripBurnKg: 0,
+    },
+    misc: {
+      crewCount: 2,
+      itemsFwdKg: std.additionalItemsDefaultKg,
+      itemsAftKg: 0,
+      itemsOtherKg: 0,
+    },
+  }));
+}
+
+function computeStationLoads(
+  config: AircraftConfig,
+  leg: LegInputs
+): { stationLoads: { stationId: string; weight: number }[] } {
+  const std = useSettingsStore.getState().settings.standardWeights;
+  const stations = config.stations ?? [];
+  const has = (id: string) => stations.some(s => s.id === id);
+
+  const loads: { stationId: string; weight: number }[] = [];
+
+  // Crew weight:
+  // - settings.standardWeights.crewTotalKg is treated as the standard *2-crew* total (pilots).
+  // - UI allows 2–4 crew, so we scale linearly from the 2-crew baseline.
+  const crewCount = Math.max(2, Math.min(4, leg.misc.crewCount || 2));
+  const crewWeightKg = std.crewTotalKg > 0 ? (std.crewTotalKg * crewCount) / 2 : 0;
+  if (has('CREW_FLIGHT_DECK') && crewWeightKg > 0) {
+    loads.push({ stationId: 'CREW_FLIGHT_DECK', weight: crewWeightKg });
+  }
+
+  // Additional items / equipment
+  if (has('ITEMS_FWD') && leg.misc.itemsFwdKg > 0) loads.push({ stationId: 'ITEMS_FWD', weight: leg.misc.itemsFwdKg });
+  if (has('ITEMS_AFT') && leg.misc.itemsAftKg > 0) loads.push({ stationId: 'ITEMS_AFT', weight: leg.misc.itemsAftKg });
+  if (has('ITEMS_OTHER') && leg.misc.itemsOtherKg > 0) loads.push({ stationId: 'ITEMS_OTHER', weight: leg.misc.itemsOtherKg });
+
+  return { stationLoads: loads };
+}
+
+function computePhysics(
+  positions: LoadedPosition[],
+  config: AircraftConfig,
+  leg: LegInputs
+): PhysicsResult {
+  const { stationLoads } = computeStationLoads(config, leg);
+  return calculateFlightPhysics(positions, leg.fuel.blockFuelKg, config, {
+    stationLoads,
+    taxiFuelKg: leg.fuel.taxiFuelKg,
+    tripBurnKg: leg.fuel.tripBurnKg,
+  });
+}
+
 /**
  * Create the Zustand store
  */
 export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
   // Initialize with default config
   const initialPositions = initializePositions(B747_400F_CONFIG);
-  const initialPhysics = calculateFlightPhysics(initialPositions, 40000, B747_400F_CONFIG);
+  const initialLegs = createDefaultLegs(1);
+  const initialPhysics = computePhysics(initialPositions, B747_400F_CONFIG, initialLegs[0]);
+  const initialMode = useSettingsStore.getState().settings.optimization.defaultMode ?? 'fuel_efficiency';
   
   return {
     // Initial state
@@ -278,12 +387,36 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     route: DEFAULT_ROUTE,
     positions: initialPositions,
     warehouse: [],
-    fuel: 40000,
+    activeLegIndex: 0,
+    legs: initialLegs,
     physics: initialPhysics,
     selection: { id: null, source: null },
     drag: { item: null, source: null },
     aiStatus: null,
-    optimizationMode: 'safety',
+    aiCancelRequested: false,
+    optimizationMode: initialMode,
+    cancelAiOptimization: () => {
+      set({ aiCancelRequested: true });
+    },
+
+    toggleMustFly: (cargoId) => {
+      const state = get();
+      const toggle = (c: CargoItem) => ({ ...c, mustFly: !c.mustFly });
+
+      const wIdx = state.warehouse.findIndex(c => c.id === cargoId);
+      if (wIdx >= 0) {
+        const nextWarehouse = [...state.warehouse];
+        nextWarehouse[wIdx] = toggle(nextWarehouse[wIdx]);
+        set({ warehouse: nextWarehouse });
+        return;
+      }
+
+      const nextPositions = state.positions.map(p => {
+        if (p.content?.id === cargoId) return { ...p, content: toggle(p.content) };
+        return p;
+      });
+      set({ positions: nextPositions });
+    },
     showFinalize: false,
     showNotoc: false,
     
@@ -324,28 +457,75 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
           isDestination: true,
         });
         
-        set({ flight, route });
+        const nextLegCount = legCountForFlight(flight);
+        const prev = get();
+        const legs =
+          prev.legs.length === nextLegCount ? prev.legs : createDefaultLegs(nextLegCount);
+        const activeLegIndex = Math.min(prev.activeLegIndex, legs.length - 1);
+
+        const physics = computePhysics(prev.positions, prev.aircraftConfig, legs[activeLegIndex]);
+        set({ flight, route, legs, activeLegIndex, physics });
       } else {
-        set({ flight: null, route: DEFAULT_ROUTE });
+        const legs = createDefaultLegs(1);
+        const prev = get();
+        const activeLegIndex = 0;
+        const physics = computePhysics(prev.positions, prev.aircraftConfig, legs[0]);
+        set({ flight: null, route: DEFAULT_ROUTE, legs, activeLegIndex, physics });
       }
     },
     
     setRoute: (route) => set({ route }),
     
     setFuel: (fuel) => {
-      const { positions, aircraftConfig } = get();
-      const physics = calculateFlightPhysics(positions, fuel, aircraftConfig);
-      set({ fuel, physics });
+      const state = get();
+      const nextLegs = [...state.legs];
+      nextLegs[state.activeLegIndex] = {
+        ...nextLegs[state.activeLegIndex],
+        fuel: { ...nextLegs[state.activeLegIndex].fuel, blockFuelKg: fuel },
+      };
+      const physics = computePhysics(state.positions, state.aircraftConfig, nextLegs[state.activeLegIndex]);
+      set({ legs: nextLegs, physics });
+    },
+
+    setActiveLegIndex: (idx) => {
+      const state = get();
+      const nextIdx = Math.max(0, Math.min(state.legs.length - 1, idx));
+      const physics = computePhysics(state.positions, state.aircraftConfig, state.legs[nextIdx]);
+      set({ activeLegIndex: nextIdx, physics });
+    },
+
+    updateLegFuel: (idx, updates) => {
+      const state = get();
+      const nextLegs = [...state.legs];
+      const targetIdx = Math.max(0, Math.min(nextLegs.length - 1, idx));
+      nextLegs[targetIdx] = {
+        ...nextLegs[targetIdx],
+        fuel: { ...nextLegs[targetIdx].fuel, ...updates },
+      };
+      const physics = computePhysics(state.positions, state.aircraftConfig, nextLegs[state.activeLegIndex]);
+      set({ legs: nextLegs, physics });
+    },
+
+    updateLegMisc: (idx, updates) => {
+      const state = get();
+      const nextLegs = [...state.legs];
+      const targetIdx = Math.max(0, Math.min(nextLegs.length - 1, idx));
+      nextLegs[targetIdx] = {
+        ...nextLegs[targetIdx],
+        misc: { ...nextLegs[targetIdx].misc, ...updates },
+      };
+      const physics = computePhysics(state.positions, state.aircraftConfig, nextLegs[state.activeLegIndex]);
+      set({ legs: nextLegs, physics });
     },
     
     setOptimizationMode: (mode) => set({ optimizationMode: mode }),
     
     // Cargo actions
     importManifest: (count = 30) => {
-      const { aircraftConfig, route } = get();
+      const { aircraftConfig, route, legs, activeLegIndex } = get();
       const warehouse = generateManifest(count, route);
       const positions = initializePositions(aircraftConfig);
-      const physics = calculateFlightPhysics(positions, get().fuel, aircraftConfig);
+      const physics = computePhysics(positions, aircraftConfig, legs[activeLegIndex]);
       set({ 
         warehouse, 
         positions, 
@@ -367,9 +547,9 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     clearAll: () => {
-      const { aircraftConfig, fuel } = get();
+      const { aircraftConfig, legs, activeLegIndex } = get();
       const positions = initializePositions(aircraftConfig);
-      const physics = calculateFlightPhysics(positions, fuel, aircraftConfig);
+      const physics = computePhysics(positions, aircraftConfig, legs[activeLegIndex]);
       set({ 
         warehouse: [], 
         positions, 
@@ -379,7 +559,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     updateCargoWeight: (cargoId, newWeight) => {
-      const { positions, warehouse, fuel, aircraftConfig } = get();
+      const { positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       
       // Check if in warehouse
       const warehouseIdx = warehouse.findIndex(i => i.id === cargoId);
@@ -398,31 +578,31 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         return p;
       });
       
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ positions: newPositions, physics });
     },
     
     // Position actions
     loadCargoAtPosition: (positionId, cargo) => {
-      const { positions, fuel, aircraftConfig } = get();
+      const { positions, aircraftConfig, legs, activeLegIndex } = get();
       const newPositions = positions.map(p => 
         p.id === positionId ? { ...p, content: cargo } : p
       );
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ positions: newPositions, physics });
     },
     
     unloadPosition: (positionId) => {
-      const { positions, fuel, aircraftConfig } = get();
+      const { positions, aircraftConfig, legs, activeLegIndex } = get();
       const newPositions = positions.map(p => 
         p.id === positionId ? { ...p, content: null } : p
       );
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ positions: newPositions, physics });
     },
     
     moveCargoToWarehouse: (positionId) => {
-      const { positions, warehouse, fuel, aircraftConfig } = get();
+      const { positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       const position = positions.find(p => p.id === positionId);
       if (!position?.content) return;
       
@@ -430,7 +610,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       const newPositions = positions.map(p => 
         p.id === positionId ? { ...p, content: null } : p
       );
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ 
         positions: newPositions, 
         warehouse: [...warehouse, cargo],
@@ -462,7 +642,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // Drop handlers
     dropOnPosition: (positionId) => {
-      const { drag, positions, warehouse, fuel, aircraftConfig } = get();
+      const { drag, positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       if (!drag.item) return false;
       
       const targetPos = positions.find(p => p.id === positionId);
@@ -498,7 +678,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         });
       }
       
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ 
         positions: newPositions, 
         warehouse: newWarehouse,
@@ -511,7 +691,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     
     dropOnWarehouse: () => {
-      const { drag, positions, warehouse, fuel, aircraftConfig } = get();
+      const { drag, positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
       if (!drag.item || drag.source === 'warehouse') return;
       
       // Remove from position
@@ -519,7 +699,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         p.content?.id === drag.item!.id ? { ...p, content: null } : p
       );
       
-      const physics = calculateFlightPhysics(newPositions, fuel, aircraftConfig);
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({
         positions: newPositions,
         warehouse: [...warehouse, drag.item],
@@ -531,36 +711,27 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     
     // AI optimization with different strategies
     runAiOptimization: async () => {
-      const { warehouse, positions, aircraftConfig, fuel, optimizationMode, route } = get();
+      const { warehouse, positions, aircraftConfig, optimizationMode, route, legs, activeLegIndex } = get();
       const appSettings = useSettingsStore.getState().settings;
       const optSettings = appSettings.optimization;
+      const leg = legs[activeLegIndex];
+      const fuel = leg.fuel.blockFuelKg;
+      const { stationLoads } = computeStationLoads(aircraftConfig, leg);
       
       if (warehouse.length === 0 && positions.every(p => !p.content)) {
         return;
       }
-      
-      set({ aiStatus: 'thinking' });
-      
-      // Collect all cargo
-      const currentCargo = positions.filter(p => p.content).map(p => p.content!);
-      const allCargo = [...warehouse, ...currentCargo];
-      
-      // Clear positions and warehouse
-      let tempPositions = initializePositions(aircraftConfig);
-      set({ 
-        positions: tempPositions, 
-        warehouse: [],
-      });
-      
-      await new Promise(r => setTimeout(r, 500));
-      set({ aiStatus: 'placing' });
-      
+
+      // Snapshot current state (for safe rollback on failure/cancel)
+      const snapshotPositions = positions.map(p => ({ ...p, content: p.content ? { ...p.content } : null }));
+      const snapshotWarehouse = warehouse.map(c => ({ ...c }));
+      const snapshotPhysics = get().physics;
+
+      set({ aiCancelRequested: false });
+
       // Convert route to simple format for optimizer
       const routeStops = route.map(r => ({ code: r.code, city: r.city, flag: r.flag }));
-      
-      // Apply mode-specific sorting
-      const sortedCargo = sortCargoForMode(allCargo, optimizationMode, routeStops);
-      
+
       // CG target based on mode
       const cgTargets: Record<OptimizationMode, number> = {
         safety: (aircraftConfig.cgLimits.forward + aircraftConfig.cgLimits.aft) / 2,
@@ -568,48 +739,204 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         unload_efficiency: (aircraftConfig.cgLimits.forward + aircraftConfig.cgLimits.aft) / 2,
       };
       const targetCG = cgTargets[optimizationMode];
-      
+
       // CG limits with safety margin
       const safetyMargin = optSettings.minCGMargin; // Stay away from limits (configurable)
       const safeFwdLimit = aircraftConfig.cgLimits.forward + safetyMargin;
       const safeAftLimit = aircraftConfig.cgLimits.aft - safetyMargin;
-      
-      const remaining: CargoItem[] = [];
-      
-      for (const item of sortedCargo) {
-        // Find best position that keeps CG in limits and moves toward target
-        const bestPosition = findBestPositionWithCGCheck(
-          item,
-          tempPositions,
-          aircraftConfig,
-          fuel,
-          targetCG,
-          safeFwdLimit,
-          safeAftLimit,
-          optimizationMode,
-          routeStops,
-          optSettings.checkLateralBalance,
-          optSettings.maxLateralImbalance
-        );
-        
-        if (!bestPosition) {
-          remaining.push(item);
-          continue;
-        }
-        
-        const posIdx = tempPositions.findIndex(p => p.id === bestPosition.id);
-        tempPositions[posIdx] = { ...tempPositions[posIdx], content: item };
-        
-        const physics = calculateFlightPhysics(tempPositions, fuel, aircraftConfig);
-        set({ positions: [...tempPositions], physics });
-        
-        await new Promise(r => setTimeout(r, 80));
+
+      const maxAttempts = Math.max(1, optSettings.maxAutoloadAttempts || 10);
+
+      // Collect all cargo
+      const currentCargo = positions.filter(p => p.content).map(p => p.content!);
+      const allCargo = [...warehouse, ...currentCargo];
+
+      // Fast impossibility check for MUST FLY (weight > any position max)
+      const maxPosWeight = Math.max(...aircraftConfig.positions.map(p => p.maxWeight));
+      const impossibleMust = allCargo.filter(c => c.mustFly && c.weight > maxPosWeight);
+      if (impossibleMust.length > 0) {
+        set({
+          positions: snapshotPositions,
+          warehouse: snapshotWarehouse,
+          physics: snapshotPhysics,
+          aiStatus: {
+            phase: 'failed',
+            attempt: 1,
+            maxAttempts,
+            message: `MUST FLY too heavy for any position: ${impossibleMust.map(c => c.id).join(', ')}`,
+            canRetry: false,
+          },
+        });
+        return;
       }
-      
-      set({ 
-        warehouse: remaining,
-        aiStatus: null,
-      });
+
+      const seedRand = (seed: number) => {
+        let t = seed >>> 0;
+        return () => {
+          t += 0x6D2B79F5;
+          let r = Math.imul(t ^ (t >>> 15), 1 | t);
+          r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      };
+
+      const shuffleInPlace = <T,>(arr: T[], rand: () => number) => {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+      };
+
+      const explainLeftover = (item: CargoItem, emptyPositions: LoadedPosition[]): string => {
+        const available = emptyPositions.filter(p => !p.content);
+        const fitsWeight = available.some(p => p.maxWeight >= item.weight);
+        if (!fitsWeight) return 'No position can accept this weight';
+        return 'No CG/lateral-safe position available under current limits';
+      };
+
+      // Attempt loop (bounded repacks)
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const state = get();
+        if (state.aiCancelRequested) {
+          set({
+            positions: snapshotPositions,
+            warehouse: snapshotWarehouse,
+            physics: snapshotPhysics,
+            aiStatus: {
+              phase: 'cancelled',
+              attempt,
+              maxAttempts,
+              message: 'Cancelled',
+              canRetry: true,
+            },
+          });
+          return;
+        }
+
+        set({
+          aiStatus: {
+            phase: attempt === 1 ? 'thinking' : 'repacking',
+            attempt,
+            maxAttempts,
+            message: attempt === 1 ? 'Analyzing manifest…' : `Repacking attempt ${attempt}/${maxAttempts}…`,
+          },
+        });
+
+        // Start from empty plan each attempt
+        let tempPositions = initializePositions(aircraftConfig);
+        set({ positions: tempPositions, warehouse: [] });
+
+        const rand = seedRand(attempt * 9973);
+
+        // MUST FLY first, then mode-specific sorting for the rest
+        const mustFly = allCargo.filter(c => !!c.mustFly).sort((a, b) => b.weight - a.weight);
+        const normal = allCargo.filter(c => !c.mustFly);
+        let sortedNormal = sortCargoForMode(normal, optimizationMode, routeStops);
+        if (attempt > 1) {
+          // Controlled variation to escape greedy dead-ends
+          shuffleInPlace(sortedNormal, rand);
+        }
+        const cargoOrder = [...mustFly, ...sortedNormal];
+
+        const remaining: CargoItem[] = [];
+
+        const jitter = () => (attempt > 1 ? (rand() - 0.5) * 0.01 : 0);
+
+        for (let idx = 0; idx < cargoOrder.length; idx++) {
+          const item = cargoOrder[idx];
+          const cur = get();
+          if (cur.aiCancelRequested) {
+            set({
+              positions: snapshotPositions,
+              warehouse: snapshotWarehouse,
+              physics: snapshotPhysics,
+              aiStatus: {
+                phase: 'cancelled',
+                attempt,
+                maxAttempts,
+                message: 'Cancelled',
+                canRetry: true,
+              },
+            });
+            return;
+          }
+
+          // Find best position that keeps CG in limits and moves toward target
+          const bestPosition = findBestPositionWithCGCheck(
+            item,
+            tempPositions,
+            aircraftConfig,
+            fuel,
+            targetCG,
+            safeFwdLimit,
+            safeAftLimit,
+            optimizationMode,
+            routeStops,
+            optSettings.checkLateralBalance,
+            optSettings.maxLateralImbalance,
+            stationLoads,
+            leg.fuel.taxiFuelKg,
+            leg.fuel.tripBurnKg,
+            jitter
+          );
+
+          if (!bestPosition) {
+            remaining.push(item);
+            continue;
+          }
+
+          const posIdx = tempPositions.findIndex(p => p.id === bestPosition.id);
+          tempPositions[posIdx] = { ...tempPositions[posIdx], content: item };
+
+          const physics = computePhysics(tempPositions, aircraftConfig, leg);
+          const animMs = Math.max(0, appSettings.display.aiAnimationSpeed ?? 80);
+          if (idx % 4 === 0) {
+            set({
+              aiStatus: {
+                phase: 'placing',
+                attempt,
+                maxAttempts,
+                message: `Placing ${idx + 1}/${cargoOrder.length}…`,
+              },
+            });
+          }
+          set({ positions: [...tempPositions], physics });
+
+          if (animMs > 0) {
+            await new Promise(r => setTimeout(r, Math.min(80, animMs)));
+          }
+        }
+
+        // Success
+        if (remaining.length === 0) {
+          set({
+            warehouse: [],
+            aiStatus: null,
+          });
+          return;
+        }
+
+        // If MUST FLY is present in leftovers, keep trying until attempts exhausted.
+        const mustLeft = remaining.filter(c => c.mustFly);
+        if (attempt === maxAttempts) {
+          // Exhausted
+          const reasons = remaining.slice(0, 6).map(c => `${c.id}: ${explainLeftover(c, tempPositions)}`);
+          const mustMsg = mustLeft.length > 0 ? `MUST FLY not placed: ${mustLeft.map(c => c.id).join(', ')}. ` : '';
+          set({
+            positions: snapshotPositions,
+            warehouse: snapshotWarehouse,
+            physics: snapshotPhysics,
+            aiStatus: {
+              phase: 'failed',
+              attempt,
+              maxAttempts,
+              message: `${mustMsg}Tried ${maxAttempts} attempts — no safe solution. Try again?\n${reasons.join('\n')}`,
+              canRetry: true,
+            },
+          });
+          return;
+        }
+      }
     },
     
     // Modal actions
@@ -710,7 +1037,11 @@ function findBestPositionWithCGCheck(
   mode: OptimizationMode,
   route: { code: string }[],
   checkLateralBalance: boolean,
-  maxLateralImbalanceKg: number
+  maxLateralImbalanceKg: number,
+  stationLoads: { stationId: string; weight: number }[],
+  taxiFuelKg: number,
+  tripBurnKg: number,
+  scoreJitter?: () => number
 ): LoadedPosition | null {
   // Filter to available positions that can handle this weight
   const available = positions.filter(p => 
@@ -729,7 +1060,11 @@ function findBestPositionWithCGCheck(
     const testPositions = positions.map(p => 
       p.id === pos.id ? { ...p, content: cargo } : p
     );
-    const testPhysics = calculateFlightPhysics(testPositions, fuel, config);
+    const testPhysics = calculateFlightPhysics(testPositions, fuel, config, {
+      stationLoads,
+      taxiFuelKg,
+      tripBurnKg,
+    });
     const newCG = testPhysics.towCG;
     
     // Check if still within limits
@@ -785,6 +1120,7 @@ function findBestPositionWithCGCheck(
       score += cgMargin * 2; // Bonus for good CG margin
     }
     
+    if (scoreJitter) score += scoreJitter();
     return { pos, score, newCG, inLimits: true };
   });
   

@@ -11,6 +11,7 @@ import type {
   DeckType,
   PositionType,
   LowerHoldGroup,
+  StationDefinition,
 } from '@core/types';
 
 /**
@@ -91,6 +92,29 @@ const LOWER_DECK_POSITIONS: PositionDefinition[] = [
 ];
 
 /**
+ * Non-cargo W&B stations (SAMPLE).
+ * Replace arms/stations with W&B manual station table for FAA-grade accuracy.
+ */
+const STATIONS: StationDefinition[] = [
+  // Crew (fixed total weight, but still modeled at an arm)
+  { id: 'CREW_FLIGHT_DECK', label: 'Crew (Flight Deck)', category: 'crew', arm: 350 },
+  { id: 'JUMPSEAT_1', label: 'Jumpseat 1', category: 'crew', arm: 420, maxCount: 1 },
+
+  // Extra riders (0–6)
+  { id: 'RIDER_1', label: 'Extra Rider 1', category: 'rider', arm: 650, maxCount: 1 },
+  { id: 'RIDER_2', label: 'Extra Rider 2', category: 'rider', arm: 650, maxCount: 1 },
+  { id: 'RIDER_3', label: 'Extra Rider 3', category: 'rider', arm: 650, maxCount: 1 },
+  { id: 'RIDER_4', label: 'Extra Rider 4', category: 'rider', arm: 650, maxCount: 1 },
+  { id: 'RIDER_5', label: 'Extra Rider 5', category: 'rider', arm: 650, maxCount: 1 },
+  { id: 'RIDER_6', label: 'Extra Rider 6', category: 'rider', arm: 650, maxCount: 1 },
+
+  // Additional items / catering / equipment
+  { id: 'ITEMS_FWD', label: 'Additional Items (FWD)', category: 'items', arm: 700 },
+  { id: 'ITEMS_AFT', label: 'Additional Items (AFT)', category: 'items', arm: 1550 },
+  { id: 'ITEMS_OTHER', label: 'Additional Items (Other)', category: 'items', arm: 1100 },
+];
+
+/**
  * Complete B747-400F Configuration
  */
 export const B747_400F_CONFIG: AircraftConfig = {
@@ -144,6 +168,8 @@ export const B747_400F_CONFIG: AircraftConfig = {
     ...MAIN_DECK_POSITIONS,
     ...LOWER_DECK_POSITIONS,
   ],
+
+  stations: STATIONS,
 };
 
 /**

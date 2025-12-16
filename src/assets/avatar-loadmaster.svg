@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111c33"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- avatar tile -->
+  <circle cx="64" cy="64" r="60" fill="url(#bg)"/>
+  <circle cx="64" cy="64" r="60" fill="none" stroke="url(#ring)" stroke-width="6"/>
+
+  <!-- shoulders / jacket -->
+  <path d="M28 114c6-20 20-32 36-32s30 12 36 32" fill="#0f172a" opacity="0.95"/>
+  <path d="M40 112c6-14 16-22 24-22s18 8 24 22" fill="#111827" opacity="0.9"/>
+
+  <!-- neck -->
+  <path d="M56 80c2 10 14 10 16 0v-8H56v8z" fill="#f1c7a6"/>
+
+  <!-- face -->
+  <path d="M64 24c17 0 28 12 28 30 0 19-12 34-28 34S36 73 36 54c0-18 11-30 28-30z" fill="#f4d0b5"/>
+
+  <!-- hair -->
+  <path d="M38 52c0-18 12-30 26-30 10 0 18 4 23 11 2 3 4 6 4 11-4-2-9-3-14-3-7 0-13 2-18 6-5-3-10-4-14-4-3 0-6 0-7 1z" fill="#0b1020"/>
+
+  <!-- headset band -->
+  <path d="M40 56c2-10 12-18 24-18s22 8 24 18" fill="none" stroke="#334155" stroke-width="6" stroke-linecap="round"/>
+  <!-- earcups -->
+  <rect x="30" y="56" width="14" height="20" rx="7" fill="#1f2937" stroke="#334155" stroke-width="3"/>
+  <rect x="84" y="56" width="14" height="20" rx="7" fill="#1f2937" stroke="#334155" stroke-width="3"/>
+  <!-- mic boom -->
+  <path d="M88 78c-6 8-14 12-24 12" fill="none" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="90" r="3.5" fill="#94a3b8"/>
+
+  <!-- eyes -->
+  <g opacity="0.9">
+    <circle cx="54" cy="58" r="2.6" fill="#0f172a"/>
+    <circle cx="74" cy="58" r="2.6" fill="#0f172a"/>
+  </g>
+  <!-- subtle smile -->
+  <path d="M56 70c3 3 13 3 16 0" fill="none" stroke="#9a3412" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+
+  <!-- badge patch -->
+  <g filter="url(#soft)">
+    <path d="M64 104l10 5-2 10-8-4-8 4-2-10 10-5z" fill="#1d4ed8" opacity="0.95"/>
+    <path d="M60 110h8" stroke="#e2e8f0" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M62 106h4" stroke="#e2e8f0" stroke-width="2.8" stroke-linecap="round"/>
+  </g>
+</svg>
+
+

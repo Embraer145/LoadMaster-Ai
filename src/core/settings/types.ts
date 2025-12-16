@@ -5,12 +5,14 @@
  */
 
 import type { OptimizationMode } from '../optimizer/types';
+import type { WarehouseSortMode } from '../warehouse/types';
 
 /**
  * Complete application settings
  */
 export interface AppSettings {
   general: GeneralSettings;
+  standardWeights: StandardWeightsSettings;
   optimization: OptimizationSettings;
   dangerousGoods: DGSettings;
   unloadEfficiency: UnloadSettings;
@@ -36,6 +38,23 @@ export interface GeneralSettings {
 }
 
 /**
+ * Standard weights (audit-facing)
+ *
+ * These values are intended to match operator/FAA standard weight policies.
+ * In production, these should be controlled/configured with provenance.
+ */
+export interface StandardWeightsSettings {
+  /** Fixed crew total weight (kg). Set according to operator/FAA standard weight policy. */
+  crewTotalKg: number;
+  /** Standard weight per additional rider/jumpseater (kg). */
+  standardRiderKg: number;
+  /** Maximum additional riders supported in UI (0–6 on 747 upper deck in this simulator). */
+  maxAdditionalRiders: number;
+  /** Default additional items (catering/equipment) weight (kg) for convenience. */
+  additionalItemsDefaultKg: number;
+}
+
+/**
  * Optimization settings
  */
 export interface OptimizationSettings {
@@ -53,6 +72,8 @@ export interface OptimizationSettings {
   checkLateralBalance: boolean;
   /** Maximum lateral imbalance (kg) */
   maxLateralImbalance: number;
+  /** Maximum repack attempts for autoload (bounded search) */
+  maxAutoloadAttempts: number;
 }
 
 /**
@@ -160,6 +181,8 @@ export type UnloadStrategy =
 export interface DisplaySettings {
   /** Theme */
   theme: 'dark' | 'light' | 'auto';
+  /** Default warehouse (staging bar) sort mode */
+  defaultWarehouseSort: WarehouseSortMode;
   /** Show position IDs on deck view */
   showPositionIds: boolean;
   /** Show weight on loaded positions */

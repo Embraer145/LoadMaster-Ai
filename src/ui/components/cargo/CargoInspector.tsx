@@ -5,13 +5,14 @@
  */
 
 import React, { useState } from 'react';
-import { Search, Scale, MapPin, Package, Barcode, Copy, Check } from 'lucide-react';
+import { Search, MapPin, Package, Barcode, Copy, Check } from 'lucide-react';
 import type { CargoItem } from '@core/types';
 import { getUldSpec } from '@core/uld';
 
 interface CargoInspectorProps {
   selectedContent: CargoItem | null;
   onWeightChange: (newWeight: number) => void;
+  onToggleMustFly?: (cargoId: string) => void;
   /** When true, renders without its own card chrome (for embedding in tab panels) */
   embedded?: boolean;
 }
@@ -19,6 +20,7 @@ interface CargoInspectorProps {
 export const CargoInspector: React.FC<CargoInspectorProps> = ({
   selectedContent,
   onWeightChange,
+  onToggleMustFly,
   embedded = false,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -53,11 +55,11 @@ export const CargoInspector: React.FC<CargoInspectorProps> = ({
         ? 'flex flex-col min-h-0'
         : 'bg-slate-800/80 backdrop-blur-xl border border-slate-700 rounded-xl p-0 overflow-hidden shadow-2xl min-h-[420px] flex flex-col transition-all duration-300'
     }>
-      <div className={`p-4 ${selectedContent.type.color.replace('bg-', 'bg-gradient-to-r from-slate-900 to-')} border-b border-white/10`}>
-        <div className="flex justify-between items-start">
-          <div>
+      <div className={`p-3 ${selectedContent.type.color.replace('bg-', 'bg-gradient-to-r from-slate-900 to-')} border-b border-white/10`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-white font-mono">{selectedContent.id}</h3>
+              <h3 className="text-base font-bold text-white font-mono">{selectedContent.id}</h3>
               <button
                 type="button"
                 onClick={handleCopyUld}
@@ -66,54 +68,80 @@ export const CargoInspector: React.FC<CargoInspectorProps> = ({
               >
                 {copied ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
               </button>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${selectedContent.type.color} border border-white/10`}>
+                {selectedContent.type.label}
+              </span>
+              {onToggleMustFly && (
+                <button
+                  type="button"
+                  onClick={() => onToggleMustFly(selectedContent.id)}
+                  className={`ml-1 px-3 py-1 rounded-lg border text-[11px] font-black uppercase tracking-wider ${
+                    selectedContent.mustFly
+                      ? 'bg-red-500/20 text-red-100 border-red-500/40'
+                      : 'bg-slate-950/40 text-white/80 border-white/10 hover:bg-slate-950/60'
+                  }`}
+                  title="MUST GO"
+                >
+                  MUST GO
+                </button>
+              )}
             </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${selectedContent.type.color}`}>
-              {selectedContent.type.label}
-            </span>
           </div>
-          <div className="text-right">
-            <span className="block text-2xl font-bold text-white leading-none">
+
+          {/* Weight + compact slider (iPad-friendly) */}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="text-2xl font-bold text-white leading-none tabular-nums">
               {(selectedContent.weight / 1000).toFixed(1)}t
-            </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/70 font-mono tabular-nums">
+                {selectedContent.weight}kg
+              </span>
+              <input
+                type="range"
+                min="100"
+                max="8000"
+                step="10"
+                value={selectedContent.weight}
+                onChange={(e) => onWeightChange(parseInt(e.target.value))}
+                className="w-40 h-1.5 bg-slate-700 rounded-full appearance-none accent-blue-500 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4 flex-1 overflow-y-auto">
-        {/* Weight adjust (compact) */}
-        <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700 shadow-inner">
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-              <Scale size={12} /> Adjust Weight
-            </label>
-            <span className="font-mono text-white text-xs font-bold tabular-nums">
-              {selectedContent.weight} kg
-            </span>
-          </div>
-          <input 
-            type="range" 
-            min="100" 
-            max="8000" 
-            step="10" 
-            value={selectedContent.weight} 
-            onChange={(e) => onWeightChange(parseInt(e.target.value))} 
-            className="w-full h-1 bg-slate-700 rounded-full appearance-none accent-blue-500 cursor-pointer" 
-          />
-        </div>
+      <div className="p-4 space-y-3 flex-1 overflow-y-auto">
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <span className="text-[9px] uppercase font-bold text-slate-500 flex items-center gap-1">
-              <MapPin size={10} /> Origin
-            </span>
-            <div className="text-sm font-mono text-white">{selectedContent.origin}</div>
+        {/* Compact route + contents header (frees vertical space) */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] uppercase font-bold text-slate-500 flex items-center gap-1">
+              <MapPin size={10} /> Route
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 min-w-0">
+              <div className="px-2 py-1 rounded bg-slate-900/50 border border-slate-700/50 text-sm font-mono text-white whitespace-nowrap">
+                {selectedContent.origin}
+              </div>
+              <div className="text-slate-500 font-mono text-sm">→</div>
+              <div className="px-2 py-1 rounded bg-slate-900/50 border border-slate-700/50 text-sm font-mono text-white whitespace-nowrap flex items-center gap-2">
+                {selectedContent.dest.code}
+                <span className="text-lg leading-none">{selectedContent.dest.flag}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-[9px] uppercase font-bold text-slate-500 flex items-center gap-1">
-              <MapPin size={10} /> Destination
-            </span>
-            <div className="text-sm font-mono text-white flex items-center gap-2">
-              {selectedContent.dest.code} <span className="text-lg leading-none">{selectedContent.dest.flag}</span>
+
+          <div className="shrink-0 w-44">
+            <div className="text-[9px] uppercase font-bold text-slate-500 flex items-center gap-1">
+              <Package size={10} /> Contents
+            </div>
+            <div className="mt-0.5 px-2 py-1 rounded bg-slate-900/50 border border-slate-700/50">
+              <div className="text-sm text-slate-200 font-medium truncate">
+                {selectedContent.type.label}
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono truncate">
+                {selectedContent.uldType} • {selectedContent.handlingFlags.length ? selectedContent.handlingFlags.join(', ') : '—'}
+              </div>
             </div>
           </div>
         </div>
@@ -141,7 +169,7 @@ export const CargoInspector: React.FC<CargoInspectorProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <SpecCell label="Type" value={selectedContent.uldType} />
                 <SpecCell label="Base (W×L)" value={dim} />
                 <SpecCell label="Max Height" value={height} />
@@ -149,6 +177,7 @@ export const CargoInspector: React.FC<CargoInspectorProps> = ({
                 <SpecCell label="Max Gross" value={maxGross} />
                 <SpecCell label="Doors" value={selectedContent.compatibleDoors.join(' / ')} />
                 <SpecCell label="Flags" value={flags} />
+                <SpecCell label="Handling" value={`${selectedContent.type.code} / SPL`} />
                 <SpecCell label="AWB" value={selectedContent.awb} />
               </div>
 
@@ -162,22 +191,9 @@ export const CargoInspector: React.FC<CargoInspectorProps> = ({
         })()}
 
         <div className="pt-2 border-t border-slate-700/50">
-          <span className="text-[9px] uppercase font-bold text-slate-500 flex items-center gap-1 mb-1">
-            <Package size={10} /> Content
-          </span>
-          <div className="text-sm text-slate-200 font-medium">General Cargo</div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-2">
-          <div className="bg-slate-900/50 p-2 rounded border border-slate-700/50">
-            <span className="text-[9px] text-slate-500 block">Handling</span>
-            <div className="text-xs font-mono text-slate-300 flex items-center gap-1">
-              <Barcode size={10} /> {selectedContent.type.code} / SPL
-            </div>
-          </div>
-          <div className="bg-slate-900/50 p-2 rounded border border-slate-700/50">
-            <span className="text-[9px] text-slate-500 block">Offload</span>
-            <div className="text-xs font-mono text-slate-300">{selectedContent.offloadPoint}</div>
+          <div className="text-[10px] text-slate-500 flex items-center gap-2">
+            <Barcode size={12} />
+            <span className="font-mono">AWB {selectedContent.awb}</span>
           </div>
         </div>
       </div>

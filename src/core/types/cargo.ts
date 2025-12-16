@@ -84,6 +84,12 @@ export interface CargoItem {
   /** Offload point - the stop where this cargo will be unloaded */
   offloadPoint: string;
 
+  /**
+   * MUST FLY flag (ops priority).
+   * When true, the autoloader must place this item within limits or fail the run.
+   */
+  mustFly?: boolean;
+
   /** ULD type (e.g., PMC, LD3). Used for ops metadata and door compatibility checks. */
   uldType: UldType;
   /**

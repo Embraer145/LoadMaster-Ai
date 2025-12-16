@@ -10,7 +10,8 @@
 import type { 
   AircraftConfig, 
   LoadedPosition, 
-  PhysicsResult 
+  PhysicsResult,
+  StationLoad,
 } from '../types';
 
 /**
@@ -46,6 +47,25 @@ export function calculateTotalCargoWeight(positions: LoadedPosition[]): number {
 export function calculateTotalCargoMoment(positions: LoadedPosition[]): number {
   return positions.reduce((total, pos) => {
     return total + calculatePositionMoment(pos);
+  }, 0);
+}
+
+export function calculateStationWeight(stations: StationLoad[] | undefined): number {
+  if (!stations || stations.length === 0) return 0;
+  return stations.reduce((sum, s) => sum + (s.weight ?? 0), 0);
+}
+
+export function calculateStationMoment(
+  stations: StationLoad[] | undefined,
+  config: AircraftConfig
+): number {
+  if (!stations || stations.length === 0) return 0;
+  const stationDefs = config.stations ?? [];
+  const armById = new Map(stationDefs.map(s => [s.id, s.arm]));
+  return stations.reduce((sum, s) => {
+    const arm = armById.get(s.stationId);
+    if (!arm) return sum;
+    return sum + (s.weight ?? 0) * arm;
   }, 0);
 }
 
@@ -156,34 +176,62 @@ export function calculateFuelMoment(
 export function calculateFlightPhysics(
   positions: LoadedPosition[],
   fuel: number,
-  config: AircraftConfig
+  config: AircraftConfig,
+  options?: {
+    /** Non-cargo station loads (crew/riders/equipment) */
+    stationLoads?: StationLoad[];
+    /** Taxi fuel burned before takeoff (kg) */
+    taxiFuelKg?: number;
+    /** Trip fuel burned by landing (kg) */
+    tripBurnKg?: number;
+  }
 ): PhysicsResult {
+  const taxiFuelKg = Math.max(0, options?.taxiFuelKg ?? 0);
+  const tripBurnKg = Math.max(0, options?.tripBurnKg ?? 0);
+
   // Calculate OEW contribution
   const oewMoment = calculateOEWMoment(config);
   
   // Calculate cargo contribution
   const cargoWeight = calculateTotalCargoWeight(positions);
   const cargoMoment = calculateTotalCargoMoment(positions);
+
+  // Calculate station (non-cargo) contribution
+  const stationWeight = calculateStationWeight(options?.stationLoads);
+  const stationMoment = calculateStationMoment(options?.stationLoads, config);
   
   // Zero Fuel Weight calculations
-  const zfw = config.limits.OEW + cargoWeight;
-  const zfwMoment = oewMoment + cargoMoment;
+  const zfw = config.limits.OEW + cargoWeight + stationWeight;
+  const zfwMoment = oewMoment + cargoMoment + stationMoment;
   const zfwCGLocation = calculateCGLocation(zfw, zfwMoment);
   const zfwCG = cgToPercentMAC(zfwCGLocation, config.mac.leMAC, config.mac.refChord);
   
-  // Takeoff Weight calculations (add fuel)
-  const fuelMoment = calculateFuelMoment(fuel, config.fuelArm);
-  const totalWeight = zfw + fuel;
-  const totalMoment = zfwMoment + fuelMoment;
+  // Fuel: treat `fuel` as block/ramp fuel, subtract taxi before takeoff
+  const takeoffFuel = Math.max(0, fuel - taxiFuelKg);
+  const towFuelMoment = calculateFuelMoment(takeoffFuel, config.fuelArm);
+
+  // Takeoff Weight calculations (ZFW + takeoff fuel)
+  const totalWeight = zfw + takeoffFuel;
+  const totalMoment = zfwMoment + towFuelMoment;
   const towCGLocation = calculateCGLocation(totalWeight, totalMoment);
   const towCG = cgToPercentMAC(towCGLocation, config.mac.leMAC, config.mac.refChord);
+
+  // Landing Weight calculations (burn trip fuel)
+  const landingFuel = Math.max(0, takeoffFuel - tripBurnKg);
+  const lw = zfw + landingFuel;
+  const lwMoment = zfwMoment + calculateFuelMoment(landingFuel, config.fuelArm);
+  const lwCGLocation = calculateCGLocation(lw, lwMoment);
+  const lwCG = cgToPercentMAC(lwCGLocation, config.mac.leMAC, config.mac.refChord);
   
   // Calculate limits at current weight
   const forwardLimit = calculateForwardLimit(totalWeight, config);
   const aftLimit = calculateAftLimit(totalWeight, config);
   
   // Check if within limits
-  const isOverweight = totalWeight > config.limits.MTOW;
+  const isOverweight =
+    totalWeight > config.limits.MTOW ||
+    zfw > config.limits.MZFW ||
+    lw > config.limits.MLW;
   const isUnbalanced = towCG < forwardLimit || towCG > aftLimit;
   
   return {
@@ -191,6 +239,8 @@ export function calculateFlightPhysics(
     towCG: parseFloat(towCG.toFixed(1)),
     zfw,
     zfwCG: parseFloat(zfwCG.toFixed(1)),
+    lw,
+    lwCG: parseFloat(lwCG.toFixed(1)),
     totalMoment,
     isOverweight,
     isUnbalanced,
