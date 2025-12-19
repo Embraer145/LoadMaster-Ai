@@ -7,8 +7,10 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Package, Copy, Check, Star } from 'lucide-react';
+import { Copy, Check, Star } from 'lucide-react';
 import type { CargoItem } from '@core/types';
+import { useSettingsStore } from '@core/settings';
+import { getCargoVisual, getHandlingBadges } from '@/ui/utils/cargoVisual';
 
 interface DraggableCargoProps {
   item: CargoItem;
@@ -26,6 +28,9 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
   onDragEnd,
 }) => {
   const [copied, setCopied] = useState(false);
+  const cargoColorMode = useSettingsStore((s) => s.settings.display.cargoColorMode);
+  const visual = useMemo(() => getCargoVisual(item, cargoColorMode), [item, cargoColorMode]);
+  const badges = useMemo(() => getHandlingBadges(item), [item]);
 
   const uldMeta = useMemo(() => {
     const deck = item.preferredDeck;
@@ -82,10 +87,10 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
       )}
 
       {/* Vertical material strip (color-coded, full label) */}
-      <div className={`absolute left-0 top-0 bottom-0 w-6 ${item.type.color} border-r border-white/10`}>
+      <div className={`absolute left-0 top-0 bottom-0 w-6 ${visual.bg} border-r border-white/10`}>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90">
           <span className="text-[10px] font-black tracking-widest text-white whitespace-nowrap">
-            {item.type.label.toUpperCase()}
+            {visual.stripLabel}
           </span>
         </div>
       </div>
@@ -102,21 +107,20 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
         <button
           type="button"
           onClick={handleCopyId}
-          className="w-full flex items-center justify-center gap-1 text-[9px] font-mono text-slate-400 hover:text-slate-200 mt-1"
+          className="w-full flex items-center justify-center gap-1 text-[11px] font-mono font-black text-slate-200 hover:text-white mt-1"
           title="Click to copy ULD ID"
         >
-          <span className="truncate max-w-[92px]">{item.id}</span>
+          <span className="truncate max-w-[108px]">{item.id}</span>
           {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} className="text-slate-500" />}
         </button>
 
-        {/* Weight row (icon beside tonnes) */}
-        <div className="mt-2 flex items-center justify-center gap-2">
-          <Package className={`w-4 h-4 ${item.type.color.replace('bg-', 'text-')}`} />
+        {/* Weight row (kg, full value) */}
+        <div className="mt-2 flex items-center justify-center">
           <div className="flex items-baseline gap-1">
-            <span className="font-mono font-black text-white text-lg leading-none tabular-nums">
-              {(item.weight / 1000).toFixed(1)}
+            <span className="font-mono font-black text-white text-[16px] leading-none tabular-nums">
+              {Math.round(item.weight).toLocaleString()}
             </span>
-            <span className="text-[10px] text-slate-500 font-bold">t</span>
+            <span className="text-[10px] text-slate-500 font-bold">kg</span>
           </div>
         </div>
 
@@ -133,6 +137,21 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
           {uldMeta}
         </div>
       </div>
+
+      {/* Handling classifications (DG/PER/PRI/MAIL) – hug bottom-right corner */}
+      {badges.length > 0 && (
+        <div className="absolute bottom-0 right-0 flex items-end gap-1 pointer-events-none">
+          {badges.map((b) => (
+            <span
+              key={b}
+              className="px-1.5 py-0.5 bg-slate-950/70 border border-white/10 text-[9px] font-black text-white leading-none"
+              title="Handling flag"
+            >
+              {b}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

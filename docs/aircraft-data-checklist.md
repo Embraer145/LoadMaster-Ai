@@ -85,4 +85,10 @@ Any of these works; we can adapt:
 - **CSV** for position tables and envelope tables
 - **JSON** once we define our import schema
 
+---
+
+## Appendix: Visualization / UI backlog (ops usability)
+- **ULD/Contour visualization mode**: color-code ULDs by physical family/contour (e.g., PMC/P6P/LD3/LD1) with a neutral brown palette; keep handling class (DG/PER/PRI/MAIL) visible as small badges.
+- **Contour catalog + door-fit constraints (future)**: define a real ULD contour catalog per operator/aircraft and derive door compatibility from door dimensions + contour geometry (drives both auto-load rules and 2D/3D visualization).
+
 

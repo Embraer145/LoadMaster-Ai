@@ -4,7 +4,7 @@
  * Comprehensive settings management interface.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Settings, 
   Zap, 
@@ -12,6 +12,7 @@ import {
   Truck, 
   Monitor,
   ShieldCheck,
+  DoorOpen,
   RotateCcw,
   Save,
   ChevronRight,
@@ -25,12 +26,17 @@ import { useSettingsStore, useSettings } from '@core/settings';
 import { env } from '@/config/env';
 import { evaluateCompliance } from '@core/compliance';
 import { useAuthStore } from '@core/auth';
+import type { AirframeLabelPreset, AirframeLayout, AirframeStationOverride, DoorKind, DoorSide } from '@core/types';
 import type { OptimizationMode } from '@core/optimizer/types';
 import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
+import { getDbRevKey, isDatabaseInitialized, query } from '@db/database';
+import { getAirframeLayoutByRegistration, upsertAirframeLayout } from '@db/repositories/airframeLayoutRepository';
+import { getAircraftConfig, getAvailableAircraftTypes } from '@data/aircraft';
+import { WGA_FLEET } from '@data/operators';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
 
-type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display' | 'compliance';
+type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display' | 'compliance' | 'airframeLayouts';
 
 interface AdminSettingsProps {
   onClose: () => void;
@@ -39,7 +45,8 @@ interface AdminSettingsProps {
 export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('optimization');
   const { currentUser } = useAuthStore();
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'test';
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'test' || currentUser?.role === 'super_admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const settings = useSettings();
   const { 
     updateGeneralSettings,
@@ -53,7 +60,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     resetToDefaults,
   } = useSettingsStore();
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; superOnly?: boolean }[] = [
     { id: 'general', label: 'General', icon: <Settings size={16} /> },
     { id: 'standardWeights', label: 'Standard Weights', icon: <Scale size={16} /> },
     { id: 'optimization', label: 'AI Optimization', icon: <Zap size={16} /> },
@@ -61,6 +68,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} /> },
     { id: 'display', label: 'Display', icon: <Monitor size={16} /> },
     { id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={16} /> },
+    { id: 'airframeLayouts', label: 'Airframe Layouts', icon: <DoorOpen size={16} />, superOnly: true },
   ];
 
   return (
@@ -105,7 +113,9 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
             {/* Sidebar */}
             <div className="w-56 flex-shrink-0">
               <nav className="space-y-1">
-                {tabs.map(tab => (
+                {tabs
+                  .filter((t) => !t.superOnly || isSuperAdmin)
+                  .map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
@@ -185,6 +195,9 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
                     onReset={() => resetSection('compliance')}
                     fullSettings={settings}
                   />
+                )}
+                {activeTab === 'airframeLayouts' && isSuperAdmin && (
+                  <AirframeLayoutsPanel />
                 )}
               </div>
             </div>
@@ -551,6 +564,20 @@ const DisplaySettingsPanel: React.FC<PanelProps<typeof import('@core/settings').
       </select>
     </SettingRow>
 
+    <SettingRow
+      label="Cargo Color Mode"
+      description="Choose whether cargo colors represent handling class (DG/PER/PRI/...) or physical ULD type/contour family."
+    >
+      <select
+        value={settings.cargoColorMode}
+        onChange={(e) => onUpdate({ cargoColorMode: e.target.value as typeof settings.cargoColorMode })}
+        className="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white min-w-[220px]"
+      >
+        <option value="handling">Handling (current)</option>
+        <option value="uld">ULD / Contour family</option>
+      </select>
+    </SettingRow>
+
     <SettingRow label="Theme">
       <select 
         value={settings.theme}
@@ -798,4 +825,728 @@ const ModeCard: React.FC<{
     <div className="text-xs text-slate-500 mt-1">{description}</div>
   </button>
 );
+
+// --- Airframe Layouts (super_admin only) ---
+
+function defaultDoorsForType(type: string): { kind: DoorKind; enabled: boolean; side: DoorSide; anchorKey: string }[] {
+  // Initial defaults; per-registration overrides are the point.
+  if (type.startsWith('B747')) {
+    const isUps = type.toUpperCase().includes('UPS');
+    return [
+      { kind: 'nose', enabled: true, side: 'L', anchorKey: 'nose' },
+      { kind: 'main_side', enabled: true, side: 'L', anchorKey: 'main_side_PL' },
+      { kind: 'lower_fwd', enabled: true, side: 'R', anchorKey: 'lower_fwd' },
+      { kind: 'lower_aft', enabled: true, side: 'R', anchorKey: 'lower_aft' },
+      { kind: 'bulk', enabled: !isUps, side: 'R', anchorKey: 'bulk' },
+    ];
+  }
+  return [
+    { kind: 'main_side', enabled: true, side: 'L', anchorKey: 'main_side' },
+  ];
+}
+
+const DOOR_LABEL: Record<DoorKind, string> = {
+  nose: 'Nose cargo door',
+  main_side: 'Main deck side cargo door',
+  lower_fwd: 'Lower deck FWD cargo door',
+  lower_aft: 'Lower deck AFT cargo door',
+  bulk: 'Bulk cargo door',
+};
+
+const ANCHOR_KEYS: Record<DoorKind, string[]> = {
+  nose: ['nose'],
+  main_side: ['main_side_PL', 'main_side_GK', 'main_side'],
+  lower_fwd: ['lower_fwd'],
+  lower_aft: ['lower_aft'],
+  bulk: ['bulk'],
+};
+
+const MARKER_STYLE_LABEL: Record<NonNullable<NonNullable<AirframeLayout['doors'][number]['anchor']>['markerStyle']>, string> = {
+  horizontal_under: 'Horizontal (under slot)',
+  horizontal_beside: 'Horizontal (beside slot)',
+  vertical: 'Vertical',
+};
+
+function defaultPresetForType(type: string): AirframeLabelPreset {
+  const t = type.toLowerCase();
+  if (t.includes('ups')) return 'ups';
+  if (t.includes('numeric')) return 'numeric';
+  return 'alphabetic';
+}
+
+function buildDefaultLabels(input: {
+  preset: AirframeLabelPreset;
+  positions: Array<{ id: string }>;
+  stations: Array<{ id: string; label: string }>;
+}): { positionLabels: Record<string, string>; stationLabels: Record<string, string>; stationOverrides: Record<string, AirframeStationOverride> } {
+  if (input.preset === 'blank') {
+    return { positionLabels: {}, stationLabels: {}, stationOverrides: {} };
+  }
+  // For now, presets just seed labels with the aircraft config's ids/labels.
+  // Per-tail manual edits are the primary feature, and presets are a convenience starting point.
+  const positionLabels: Record<string, string> = {};
+  for (const p of input.positions) positionLabels[p.id] = p.id;
+  const stationLabels: Record<string, string> = {};
+  for (const s of input.stations) stationLabels[s.id] = s.label;
+  const stationOverrides: Record<string, AirframeStationOverride> = {};
+  return { positionLabels, stationLabels, stationOverrides };
+}
+
+const AirframeLayoutsPanel: React.FC = () => {
+  const [selectedReg, setSelectedReg] = useState<string>(() => useLoadPlanStore.getState().flight?.registration ?? '');
+  const [layoutsByReg, setLayoutsByReg] = useState<Record<string, AirframeLayout | null>>({});
+  const [fleet, setFleet] = useState<Array<{ registration: string; aircraftType: string }>>([]);
+  const [saveStatus, setSaveStatus] = useState<{ state: 'idle' | 'saving' | 'saved' | 'error'; message?: string; at?: string }>({
+    state: 'idle',
+  });
+  const lastSavedAtRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const fromDb: Array<{ registration: string; aircraftType: string }> = [];
+      if (isDatabaseInitialized()) {
+        const rows = query<{ registration: string; aircraft_type: string }>(
+          `SELECT registration, aircraft_type FROM fleet_aircraft WHERE active = 1 ORDER BY registration`
+        );
+        fromDb.push(...rows.map((r) => ({ registration: r.registration, aircraftType: r.aircraft_type })));
+      }
+
+      const fromCode = WGA_FLEET.map((f) => ({ registration: f.reg, aircraftType: f.type }));
+
+      const mergedMap = new Map<string, { registration: string; aircraftType: string }>();
+      for (const e of [...fromDb, ...fromCode]) mergedMap.set(e.registration, e);
+      const merged = Array.from(mergedMap.values()).sort((a, b) => a.registration.localeCompare(b.registration));
+      setFleet(merged);
+      if (!selectedReg && merged.length > 0) setSelectedReg(merged[0]!.registration);
+    } catch {
+      // best-effort (prototype)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cross-tab + same-tab refresh: if DB changes, re-fetch the selected registration layout so the editor matches reality.
+  useEffect(() => {
+    const refreshSelected = () => {
+      try {
+        if (!selectedReg) return;
+        if (!isDatabaseInitialized()) return;
+        const l = getAirframeLayoutByRegistration(selectedReg);
+        setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: l }));
+      } catch {
+        // ignore
+      }
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key !== getDbRevKey()) return;
+      refreshSelected();
+    };
+    const onLayoutUpdated = () => refreshSelected();
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('lm:airframeLayoutUpdated', onLayoutUpdated as any);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('lm:airframeLayoutUpdated', onLayoutUpdated as any);
+    };
+  }, [selectedReg]);
+
+  const selectedType = useMemo(() => {
+    // Prefer the per-registration layout record's aircraftType when present (super admin can override).
+    return (layoutsByReg[selectedReg]?.aircraftType ?? fleet.find((f) => f.registration === selectedReg)?.aircraftType) ?? 'B747-400F';
+  }, [fleet, selectedReg]);
+
+  const typeConfig = useMemo(() => getAircraftConfig(selectedType), [selectedType]);
+
+  const current = useMemo(() => {
+    return layoutsByReg[selectedReg] ?? null;
+  }, [layoutsByReg, selectedReg]);
+
+  const ensureLoaded = (reg: string) => {
+    if (!reg) return;
+    if (Object.prototype.hasOwnProperty.call(layoutsByReg, reg)) return;
+    try {
+      if (!isDatabaseInitialized()) return;
+      const l = getAirframeLayoutByRegistration(reg);
+      setLayoutsByReg((prev) => ({ ...prev, [reg]: l }));
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedReg) return;
+    ensureLoaded(selectedReg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReg]);
+
+  const editable = useMemo(() => {
+    const typeDefaultOewKg = getAircraftConfig(selectedType)?.limits.OEW;
+    const defaultPositionArms: Record<string, number> = {};
+    const defaultStationArms: Record<string, number> = {};
+    for (const p of typeConfig?.positions ?? []) defaultPositionArms[p.id] = p.arm;
+    for (const s of typeConfig?.stations ?? []) defaultStationArms[s.id] = s.arm;
+
+    const preset =
+      current?.labelPreset ??
+      (selectedReg === 'CUSTOM' ? 'blank' : defaultPresetForType(selectedType));
+    const defaults = buildDefaultLabels({
+      preset,
+      positions: typeConfig?.positions ?? [],
+      stations: typeConfig?.stations ?? [],
+    });
+
+    // IMPORTANT: keep this typed as AirframeLayout to avoid `current ?? { ... }` producing
+    // a union type (which breaks door anchor editing fields like slotId/markerStyle).
+    const base: AirframeLayout = current ?? ({
+      registration: selectedReg,
+      aircraftType: selectedType,
+      version: 1,
+      locked: true,
+      oewKg: typeDefaultOewKg,
+      positionArms: defaultPositionArms,
+      stationArms: defaultStationArms,
+      labelPreset: preset,
+      positionLabels: defaults.positionLabels,
+      stationLabels: defaults.stationLabels,
+      stationOverrides: defaults.stationOverrides,
+      doors: defaultDoorsForType(selectedType).map((d) => ({
+        kind: d.kind,
+        enabled: d.enabled,
+        side: d.side,
+        anchor: { key: d.anchorKey },
+      })),
+      updatedAtUtc: new Date().toISOString(),
+    } as AirframeLayout);
+    // Ensure the editable record always has a complete set of arms for "aircraft report" purposes.
+    const mergedPositionLabels = { ...defaults.positionLabels, ...(base.positionLabels ?? {}) };
+    const mergedStationLabels = { ...defaults.stationLabels, ...(base.stationLabels ?? {}) };
+    return {
+      ...base,
+      positionArms: { ...defaultPositionArms, ...(base.positionArms ?? {}) },
+      stationArms: { ...defaultStationArms, ...(base.stationArms ?? {}) },
+      positionLabels: mergedPositionLabels,
+      stationLabels: mergedStationLabels,
+      stationOverrides: { ...(base.stationOverrides ?? {}) },
+    };
+  }, [current, selectedReg, selectedType, typeConfig]);
+
+  const setOewKg = (oewKg: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      return {
+        ...prev,
+        [selectedReg]: { ...cur, oewKg, updatedAtUtc: new Date().toISOString() },
+      };
+    });
+  };
+
+  const setStationArm = (stationId: string, arm: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const stationArms = { ...(cur.stationArms ?? {}) };
+      if (typeof arm === 'number' && Number.isFinite(arm)) stationArms[stationId] = arm;
+      return { ...prev, [selectedReg]: { ...cur, stationArms, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setPositionArm = (positionId: string, arm: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const positionArms = { ...(cur.positionArms ?? {}) };
+      if (typeof arm === 'number' && Number.isFinite(arm)) positionArms[positionId] = arm;
+      return { ...prev, [selectedReg]: { ...cur, positionArms, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setLabelPreset = (labelPreset: AirframeLabelPreset) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      return { ...prev, [selectedReg]: { ...cur, labelPreset, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setAircraftTypeForLayout = (aircraftType: string) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      return { ...prev, [selectedReg]: { ...cur, aircraftType, updatedAtUtc: new Date().toISOString() } };
+    });
+    setFleet((prev) => prev.map((f) => (f.registration === selectedReg ? { ...f, aircraftType } : f)));
+  };
+
+  const applyLabelPreset = (preset: AirframeLabelPreset) => {
+    // Apply + persist (user request): make this behave like "Apply template now".
+    try {
+      if (!selectedReg) return;
+      const defaults = buildDefaultLabels({
+        preset,
+        positions: typeConfig?.positions ?? [],
+        stations: typeConfig?.stations ?? [],
+      });
+      const cur = layoutsByReg[selectedReg] ?? editable;
+      const next: Omit<AirframeLayout, 'updatedAtUtc'> = {
+        ...cur,
+        registration: selectedReg,
+        aircraftType: selectedType,
+        version: cur.version ?? 1,
+        locked: true,
+        labelPreset: preset,
+        positionLabels: defaults.positionLabels,
+        stationLabels: defaults.stationLabels,
+        stationOverrides: defaults.stationOverrides,
+      };
+
+      // Update local draft immediately (optimistic UI)
+      setLayoutsByReg((prev) => ({
+        ...prev,
+        [selectedReg]: { ...next, updatedAtUtc: new Date().toISOString() },
+      }));
+
+      // Persist (best-effort). This triggers lm:airframeLayoutUpdated so the diagram refreshes.
+      if (!isDatabaseInitialized()) {
+        console.warn('DB not initialized; preset applied locally only.');
+        return;
+      }
+      const saved = upsertAirframeLayout({
+        registration: selectedReg,
+        aircraftType: selectedType,
+        layout: {
+          version: next.version,
+          locked: next.locked,
+          oewKg: next.oewKg,
+          positionArms: next.positionArms,
+          stationArms: next.stationArms,
+          labelPreset: next.labelPreset,
+          positionLabels: next.positionLabels,
+          stationLabels: next.stationLabels,
+          stationOverrides: next.stationOverrides,
+          doors: next.doors,
+        },
+      });
+      setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: saved }));
+    } catch {
+      // ignore (prototype)
+    }
+  };
+
+  const setPositionLabel = (positionId: string, label: string | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const positionLabels = { ...(cur.positionLabels ?? {}) };
+      if (label === undefined || label.trim() === '') delete positionLabels[positionId];
+      else positionLabels[positionId] = label;
+      return { ...prev, [selectedReg]: { ...cur, positionLabels, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setStationLabel = (stationId: string, label: string | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const stationLabels = { ...(cur.stationLabels ?? {}) };
+      if (label === undefined || label.trim() === '') delete stationLabels[stationId];
+      else stationLabels[stationId] = label;
+      return { ...prev, [selectedReg]: { ...cur, stationLabels, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setStationOverride = (stationId: string, patch: Partial<AirframeStationOverride>) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const stationOverrides = { ...(cur.stationOverrides ?? {}) };
+      stationOverrides[stationId] = { ...(stationOverrides[stationId] ?? {}), ...patch };
+      return { ...prev, [selectedReg]: { ...cur, stationOverrides, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setDoor = (kind: DoorKind, patch: Partial<AirframeLayout['doors'][number]>) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const doors = [...(cur?.doors ?? [])];
+      const idx = doors.findIndex((d) => d.kind === kind);
+      if (idx >= 0) doors[idx] = { ...doors[idx]!, ...patch };
+      else doors.push({ kind, enabled: true, side: 'L', ...patch } as any);
+      return {
+        ...prev,
+        [selectedReg]: { ...cur, doors, updatedAtUtc: new Date().toISOString() },
+      };
+    });
+  };
+
+  const save = () => {
+    try {
+      if (!selectedReg) return;
+      setSaveStatus({ state: 'saving' });
+      if (!isDatabaseInitialized()) {
+        setSaveStatus({ state: 'error', message: 'DB not ready (cannot save yet).' });
+        return;
+      }
+      const saved = upsertAirframeLayout({
+        registration: selectedReg,
+        aircraftType: selectedType,
+        layout: {
+          version: editable.version ?? 1,
+          locked: true,
+          oewKg: editable.oewKg,
+          positionArms: editable.positionArms,
+          stationArms: editable.stationArms,
+          labelPreset: editable.labelPreset,
+          positionLabels: editable.positionLabels,
+          stationLabels: editable.stationLabels,
+          stationOverrides: editable.stationOverrides,
+          doors: editable.doors,
+        },
+      });
+      setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: saved }));
+      const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      lastSavedAtRef.current = at;
+      setSaveStatus({ state: 'saved', at });
+    } catch {
+      setSaveStatus({ state: 'error', message: 'Save failed. Check console for details.' });
+    }
+  };
+
+  const resetToDefaults = () => {
+    const preset = defaultPresetForType(selectedType);
+    const defaults = buildDefaultLabels({
+      preset,
+      positions: typeConfig?.positions ?? [],
+      stations: typeConfig?.stations ?? [],
+    });
+    setLayoutsByReg((prev) => ({
+      ...prev,
+      [selectedReg]: {
+        registration: selectedReg,
+        aircraftType: selectedType,
+        version: 1,
+        locked: true,
+        labelPreset: preset,
+        positionLabels: defaults.positionLabels,
+        stationLabels: defaults.stationLabels,
+        stationOverrides: defaults.stationOverrides,
+        doors: defaultDoorsForType(selectedType).map((d) => ({
+          kind: d.kind,
+          enabled: d.enabled,
+          side: d.side,
+          anchor: { key: d.anchorKey },
+        })),
+        updatedAtUtc: new Date().toISOString(),
+      },
+    }));
+  };
+
+  return (
+    <div>
+      <SectionHeader
+        title="Airframe Layouts (Per Registration)"
+        description="Set door presence/side per tail number. Intended to be set once during onboarding and then remain stable."
+        onReset={resetToDefaults}
+      />
+
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Registration</div>
+            <select
+              value={selectedReg}
+              onChange={(e) => setSelectedReg(e.target.value)}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white min-w-[220px]"
+            >
+              <option value="">-- Select --</option>
+              {fleet.map((f) => (
+                <option key={f.registration} value={f.registration}>
+                  {f.registration} • {f.aircraftType}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Labels preset</div>
+            <select
+              value={editable.labelPreset ?? defaultPresetForType(selectedType)}
+              onChange={(e) => setLabelPreset(e.target.value as AirframeLabelPreset)}
+              disabled={!selectedReg}
+              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
+              title="Label preset"
+            >
+              <option value="blank">Blank</option>
+              <option value="alphabetic">Alphabetic</option>
+              <option value="numeric">Numeric</option>
+              <option value="ups">UPS</option>
+            </select>
+            <select
+              value={selectedType}
+              onChange={(e) => setAircraftTypeForLayout(e.target.value)}
+              disabled={!selectedReg}
+              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
+              title="Aircraft type (controls slot set + diagram layout)"
+            >
+              {getAvailableAircraftTypes().map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => applyLabelPreset((editable.labelPreset ?? defaultPresetForType(selectedType)) as AirframeLabelPreset)}
+              disabled={!selectedReg}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-slate-700 disabled:opacity-50"
+              title="Overwrite all labels with the selected preset defaults"
+            >
+              Apply preset
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {saveStatus.state !== 'idle' && (
+              <div
+                className={[
+                  'px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap',
+                  saveStatus.state === 'saved'
+                    ? 'bg-emerald-900/20 border-emerald-900/50 text-emerald-300'
+                    : saveStatus.state === 'saving'
+                      ? 'bg-slate-800/60 border-slate-700 text-slate-300'
+                      : 'bg-red-900/20 border-red-900/50 text-red-300',
+                ].join(' ')}
+                title={saveStatus.message ?? (saveStatus.state === 'saved' ? 'Saved to local DB' : undefined)}
+              >
+                {saveStatus.state === 'saving'
+                  ? 'Saving…'
+                  : saveStatus.state === 'saved'
+                    ? `Saved ${saveStatus.at ?? lastSavedAtRef.current ?? ''}`.trim()
+                    : saveStatus.message ?? 'Error'}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={save}
+              disabled={!selectedReg}
+              className="px-4 py-2 bg-white text-slate-900 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Save Layout
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          Stored in local DB table <span className="font-mono text-slate-300">airframe_layouts</span>. Only{' '}
+          <span className="font-bold text-slate-300">super_admin</span> can edit.
+        </div>
+      </div>
+
+      <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Weights (per registration)</div>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          <div>
+            <div className="text-xs text-slate-300 font-bold">OEW (kg)</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              Maintenance updates can change this over time; this value overrides the aircraft type default for this tail.
+            </div>
+          </div>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={typeof editable.oewKg === 'number' ? editable.oewKg : ''}
+            placeholder={String(getAircraftConfig(selectedType)?.limits.OEW ?? '')}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const n = raw === '' ? undefined : Number(raw);
+              setOewKg(Number.isFinite(n as number) ? (n as number) : undefined);
+            }}
+            className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Moment Arms (inches from datum)</div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          These arms drive the actual W&B math. Keep them updated per aircraft report when maintenance updates weights/config.
+        </div>
+
+        {/* Non-cargo stations */}
+        <div className="mt-3">
+          <div className="text-xs text-slate-300 font-bold">Stations (Crew / Items)</div>
+          <div className="mt-2 max-h-[220px] overflow-y-auto border border-slate-800 rounded-lg">
+            <div className="grid grid-cols-[160px,1fr,150px,80px,90px,120px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
+              <div>Station</div>
+              <div>ID</div>
+              <div>Display label</div>
+              <div className="text-center">Enabled</div>
+              <div className="text-right">Max</div>
+              <div className="text-right">Arm (in)</div>
+            </div>
+            {(typeConfig?.stations ?? []).map((s) => (
+              <div
+                key={s.id}
+                className="grid grid-cols-[160px,1fr,150px,80px,90px,120px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0"
+              >
+                <div className="text-xs text-slate-200 truncate">{editable.stationLabels?.[s.id] ?? s.label}</div>
+                <div className="text-[11px] font-mono text-slate-400 truncate">{s.id}</div>
+                <input
+                  type="text"
+                  value={editable.stationLabels?.[s.id] ?? ''}
+                  placeholder={s.label}
+                  onChange={(e) => setStationLabel(s.id, e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-full"
+                />
+                <div className="flex justify-center">
+                  <Toggle
+                    checked={editable.stationOverrides?.[s.id]?.enabled ?? true}
+                    onChange={(v) => setStationOverride(s.id, { enabled: v })}
+                  />
+                </div>
+                <input
+                  type="number"
+                  value={typeof editable.stationOverrides?.[s.id]?.maxCount === 'number' ? editable.stationOverrides![s.id]!.maxCount : ''}
+                  placeholder={typeof s.maxCount === 'number' ? String(s.maxCount) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setStationOverride(s.id, { maxCount: Number.isFinite(n as number) ? (n as number) : undefined });
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-full text-right"
+                />
+                <input
+                  type="number"
+                  value={typeof editable.stationArms?.[s.id] === 'number' ? editable.stationArms![s.id] : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setStationArm(s.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+              </div>
+            ))}
+            {(typeConfig?.stations ?? []).length === 0 && (
+              <div className="p-3 text-sm text-slate-500">No stations defined for this aircraft type.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Cargo positions */}
+        <div className="mt-4">
+          <div className="text-xs text-slate-300 font-bold">Cargo Positions</div>
+          <div className="mt-2 max-h-[260px] overflow-y-auto border border-slate-800 rounded-lg">
+            <div className="grid grid-cols-[70px,90px,150px,1fr,120px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
+              <div>Deck</div>
+              <div>Pos</div>
+              <div>Display label</div>
+              <div>Type</div>
+              <div className="text-right">Arm (in)</div>
+            </div>
+            {(typeConfig?.positions ?? []).map((p) => (
+              <div key={p.id} className="grid grid-cols-[70px,90px,150px,1fr,120px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0">
+                <div className="text-[11px] text-slate-400 font-bold">{p.deck}</div>
+                <div className="text-sm font-mono text-slate-200">{p.id}</div>
+                <input
+                  type="text"
+                  value={editable.positionLabels?.[p.id] ?? ''}
+                  placeholder={p.id}
+                  onChange={(e) => setPositionLabel(p.id, e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-full"
+                />
+                <div className="text-[11px] text-slate-500 truncate">{p.type}</div>
+                <input
+                  type="number"
+                  value={typeof editable.positionArms?.[p.id] === 'number' ? editable.positionArms![p.id] : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setPositionArm(p.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-white mb-2">Doors</div>
+        <div className="space-y-2">
+          {(['nose', 'main_side', 'lower_fwd', 'lower_aft', 'bulk'] as DoorKind[]).map((kind) => {
+            const d = editable.doors.find((x) => x.kind === kind);
+            const enabled = d?.enabled ?? false;
+            const side = (d?.side ?? (kind === 'main_side' || kind === 'nose' ? 'L' : 'R')) as DoorSide;
+            const anchorKey = d?.anchor?.key ?? (ANCHOR_KEYS[kind]?.[0] ?? '');
+            const anchorSlotId = d?.anchor?.slotId ?? '';
+            const markerStyle =
+              (d?.anchor?.markerStyle ??
+                (kind === 'nose'
+                  ? 'vertical'
+                  : kind === 'main_side' || kind === 'bulk'
+                    ? 'horizontal_under'
+                    : 'horizontal_beside')) as NonNullable<NonNullable<AirframeLayout['doors'][number]['anchor']>['markerStyle']>;
+            return (
+              <div key={kind} className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-bold text-slate-100">{DOOR_LABEL[kind]}</div>
+                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">{kind}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={side}
+                      onChange={(e) => setDoor(kind, { side: e.target.value as DoorSide })}
+                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                      title="Door side"
+                    >
+                      <option value="L">L</option>
+                      <option value="R">R</option>
+                    </select>
+                    <select
+                      value={anchorSlotId}
+                      onChange={(e) => setDoor(kind, { anchor: { ...(d?.anchor ?? {}), slotId: e.target.value || undefined } })}
+                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white min-w-[100px]"
+                      title="Anchor slot (recommended)"
+                    >
+                      <option value="">(no slot)</option>
+                      {(typeConfig?.positions ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.id}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={markerStyle}
+                      onChange={(e) =>
+                        setDoor(kind, {
+                          anchor: { ...(d?.anchor ?? {}), markerStyle: e.target.value as any },
+                        })
+                      }
+                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                      title="Marker style"
+                    >
+                      {Object.entries(MARKER_STYLE_LABEL).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={anchorKey}
+                      onChange={(e) => setDoor(kind, { anchor: { ...(d?.anchor ?? {}), key: e.target.value || undefined } })}
+                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                      title="Legacy anchor key (optional)"
+                    >
+                      <option value="">(none)</option>
+                      {ANCHOR_KEYS[kind].map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
+                    <Toggle checked={enabled} onChange={(v) => setDoor(kind, { enabled: v })} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 

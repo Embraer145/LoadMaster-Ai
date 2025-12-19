@@ -23,6 +23,8 @@ export interface EnvConfig {
   apiBaseUrl: string;
   apiTimeout: number;
   offlineEnabled: boolean;
+  /** Public app URL (used for links/sharing). */
+  appUrl: string;
   
   // Sync
   syncIntervalMinutes: number;
@@ -83,6 +85,7 @@ export function getEnvConfig(): EnvConfig {
     apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001',
     apiTimeout: parseInt(import.meta.env.VITE_API_TIMEOUT, 30000),
     offlineEnabled: parseBool(import.meta.env.VITE_OFFLINE_ENABLED, true),
+    appUrl: import.meta.env.VITE_APP_URL || (import.meta.env.DEV ? 'http://localhost:5173/#app' : 'https://loadmasterpro.crewtap.ai/#app'),
     
     // Sync
     syncIntervalMinutes: parseInt(import.meta.env.VITE_SYNC_INTERVAL_MINUTES, 15),

@@ -213,6 +213,34 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'loadmaster-settings',
+      version: 3,
+      migrate: (persisted: unknown) => {
+        // Ensure newly-added settings sections exist for older persisted states.
+        // Zustand persist stores shape: { state: ..., version: ... } in localStorage.
+        try {
+          const defaults = getDefaultSettings();
+          const p = persisted as any;
+          const prevState = (p?.state ?? p) as any;
+          const prevSettings = prevState?.settings ?? {};
+
+          return {
+            ...prevState,
+            settings: {
+              ...defaults,
+              ...prevSettings,
+              general: { ...defaults.general, ...(prevSettings.general ?? {}) },
+              standardWeights: { ...defaults.standardWeights, ...(prevSettings.standardWeights ?? {}) },
+              optimization: { ...defaults.optimization, ...(prevSettings.optimization ?? {}) },
+              dangerousGoods: { ...defaults.dangerousGoods, ...(prevSettings.dangerousGoods ?? {}) },
+              unloadEfficiency: { ...defaults.unloadEfficiency, ...(prevSettings.unloadEfficiency ?? {}) },
+              display: { ...defaults.display, ...(prevSettings.display ?? {}) },
+              compliance: { ...defaults.compliance, ...(prevSettings.compliance ?? {}) },
+            },
+          } as any;
+        } catch {
+          return persisted as any;
+        }
+      },
     }
   )
 );

@@ -44,6 +44,8 @@ const AIRPORTS = [
 interface HeaderProps {
   flight: FlightInfo | null;
   onFlightChange: (flight: FlightInfo | null) => void;
+  /** Inform the app of aircraft selection even if the flight isn’t fully specified yet. */
+  onRegistrationSelect?: (registration: string) => void;
   onImport: () => void;
   onTestSetup: () => void;
   onOpenSettings?: () => void;
@@ -52,11 +54,14 @@ interface HeaderProps {
   userLabel?: string;
   /** Display a caution badge when aircraft data is sample/simplified */
   isSampleData?: boolean;
+  /** Shows whether the local sql.js DB is initialized (helps diagnose multi-tab differences). */
+  dbReady?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   flight,
   onFlightChange,
+  onRegistrationSelect,
   onImport,
   onTestSetup,
   onOpenSettings,
@@ -64,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   onGoHome,
   userLabel,
   isSampleData,
+  dbReady,
 }) => {
   const [fleet, setFleet] = useState<'B747' | 'MD11'>('B747');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -168,6 +174,11 @@ export const Header: React.FC<HeaderProps> = ({
                   SAMPLE DATA
                 </span>
               )}
+              {dbReady === false && (
+                <span className="px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold tracking-wider">
+                  DB NOT READY
+                </span>
+              )}
             </div>
           </div>
         </button>
@@ -201,7 +212,12 @@ export const Header: React.FC<HeaderProps> = ({
             <select 
               className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer w-20" 
               value={reg} 
-              onChange={e => { setReg(e.target.value); updateFlight({ reg: e.target.value }); }}
+              onChange={e => { 
+                const next = e.target.value;
+                setReg(next);
+                onRegistrationSelect?.(next);
+                updateFlight({ reg: next }); 
+              }}
             >
               <option value="">--</option>
               {fleetRegs.map(a => (

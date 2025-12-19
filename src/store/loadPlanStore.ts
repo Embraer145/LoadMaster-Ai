@@ -24,9 +24,11 @@ import type {
 } from '@core/types';
 import { calculateFlightPhysics } from '@core/physics';
 import type { OptimizationMode } from '@core/optimizer';
-import { B747_400F_CONFIG } from '@data/aircraft';
+import { B747_400F_CONFIG, getAircraftConfig } from '@data/aircraft';
 import { WGA_DESTINATIONS, WGA_ORIGINS } from '@data/operators';
+import { WGA_FLEET } from '@data/operators';
 import { useSettingsStore } from '@core/settings';
+import { checkCargoPlacement } from '@core/uld';
 import { logAudit } from '@/db/repositories/auditRepository';
 
 function safeAudit(input: Parameters<typeof logAudit>[0]) {
@@ -96,6 +98,13 @@ interface LegInputs {
 interface LoadPlanState {
   // Aircraft config
   aircraftConfig: AircraftConfig;
+  /** Selected aircraft registration for diagram/layout selection even when no full flight is set yet. */
+  selectedRegistration: string | null;
+  /** Optional per-registration override for Operating Empty Weight (kg). */
+  oewOverrideKg: number | null;
+  /** Optional per-registration overrides for moment arms (inches from datum). */
+  positionArmOverrides: Record<string, number> | null;
+  stationArmOverrides: Record<string, number> | null;
   
   // Flight info
   flight: FlightInfo | null;
@@ -133,6 +142,19 @@ interface LoadPlanState {
   showFinalize: boolean;
   showNotoc: boolean;
 
+  // UI toast (quick feedback for invalid actions)
+  toast:
+    | null
+    | {
+        tone: 'error' | 'info';
+        message: string;
+        /** When true, UI may offer an Override button */
+        canOverride?: boolean;
+      };
+  clearToast: () => void;
+  overrideLastDrop: () => boolean;
+  pendingDropOverride: { item: CargoItem; source: 'warehouse' | string | null; targetPositionId: string } | null;
+
   // Record control (immutability + revisioning)
   loadPlanStatus: 'draft' | 'final';
   revision: number;
@@ -140,6 +162,13 @@ interface LoadPlanState {
   
   // Actions
   setFlight: (flight: FlightInfo | null) => void;
+  setSelectedRegistration: (registration: string | null) => void;
+  /** Switch aircraft type/config (typically triggered by registration selection). Resets positions/warehouse. */
+  setAircraftType: (type: string) => void;
+  /** Override aircraft OEW (kg) for current registration (maintenance updates). */
+  setAircraftOewKg: (oewKg: number | null) => void;
+  /** Override cargo-position + station moment arms (inches from datum) for current registration. */
+  setAircraftMomentArms: (arms: { positionArms?: Record<string, number>; stationArms?: Record<string, number> } | null) => void;
   setRoute: (route: RouteStop[]) => void;
   /** Set block/ramp fuel for the active leg (kg) */
   setFuel: (fuel: number) => void;
@@ -393,6 +422,55 @@ function computePhysics(
   });
 }
 
+function withOewOverride(config: AircraftConfig, oewKg: number | null): AircraftConfig {
+  if (typeof oewKg !== 'number' || !Number.isFinite(oewKg) || oewKg <= 0) return config;
+  if (config.limits.OEW === oewKg) return config;
+  return {
+    ...config,
+    limits: {
+      ...config.limits,
+      OEW: oewKg,
+    },
+  };
+}
+
+function withMomentArmOverrides(
+  config: AircraftConfig,
+  arms: { positionArms: Record<string, number> | null; stationArms: Record<string, number> | null }
+): AircraftConfig {
+  const posMap = arms.positionArms ?? {};
+  const stationMap = arms.stationArms ?? {};
+
+  const positions = config.positions.map((p) => {
+    const override = posMap[p.id];
+    if (typeof override !== 'number' || !Number.isFinite(override)) return p;
+    return { ...p, arm: override };
+  });
+
+  const stations = (config.stations ?? []).map((s) => {
+    const override = stationMap[s.id];
+    if (typeof override !== 'number' || !Number.isFinite(override)) return s;
+    return { ...s, arm: override };
+  });
+
+  return { ...config, positions, stations };
+}
+
+function buildEffectiveAircraftConfig(input: {
+  type: string;
+  fallback: AircraftConfig;
+  oewOverrideKg: number | null;
+  positionArmOverrides: Record<string, number> | null;
+  stationArmOverrides: Record<string, number> | null;
+}): AircraftConfig {
+  const base = getAircraftConfig(input.type) ?? input.fallback;
+  const withOew = withOewOverride(base, input.oewOverrideKg);
+  return withMomentArmOverrides(withOew, {
+    positionArms: input.positionArmOverrides,
+    stationArms: input.stationArmOverrides,
+  });
+}
+
 /**
  * Create the Zustand store
  */
@@ -423,6 +501,10 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
   return {
     // Initial state
     aircraftConfig: B747_400F_CONFIG,
+    selectedRegistration: null,
+    oewOverrideKg: null,
+    positionArmOverrides: null,
+    stationArmOverrides: null,
     flight: null,
     route: DEFAULT_ROUTE,
     positions: initialPositions,
@@ -463,11 +545,83 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     },
     showFinalize: false,
     showNotoc: false,
+    toast: null,
+    pendingDropOverride: null,
+    clearToast: () => set({ toast: null, pendingDropOverride: null }),
+    overrideLastDrop: () => {
+      const state = get();
+      const pending = state.pendingDropOverride;
+      if (!pending) return false;
+
+      // Force-apply: bypass compatibility checks, but still respect maxWeight (structural).
+      const targetPos = state.positions.find((p) => p.id === pending.targetPositionId);
+      if (!targetPos) {
+        set({ toast: { tone: 'error', message: `Override failed: unknown position ${pending.targetPositionId}.` }, pendingDropOverride: null });
+        return false;
+      }
+      if (pending.item.weight > targetPos.maxWeight) {
+        set({ toast: { tone: 'error', message: `Override blocked: overweight for ${targetPos.id} (max ${Math.round(targetPos.maxWeight)}kg).` }, pendingDropOverride: null });
+        return false;
+      }
+
+      // Apply same drop mechanics as normal (swap/warehouse handling) using the captured source.
+      const prevContent = targetPos.content;
+      let newPositions = state.positions.map((p) =>
+        p.id === pending.targetPositionId ? { ...p, content: pending.item } : p
+      );
+      let newWarehouse = state.warehouse;
+
+      if (pending.source === 'warehouse') {
+        newWarehouse = state.warehouse.filter((i) => i.id !== pending.item.id);
+        if (prevContent) newWarehouse = [...newWarehouse, prevContent];
+      } else if (pending.source) {
+        // swap with source position
+        newPositions = newPositions.map((p) => {
+          if (p.content?.id === pending.item.id && p.id !== pending.targetPositionId) {
+            return { ...p, content: prevContent };
+          }
+          return p;
+        });
+      }
+
+      const leg = state.legs[state.activeLegIndex];
+      const physics = computePhysics(newPositions, state.aircraftConfig, leg);
+      set({
+        positions: newPositions,
+        warehouse: newWarehouse,
+        physics,
+        selection: { id: pending.targetPositionId, source: 'slot' },
+        toast: null,
+        pendingDropOverride: null,
+      });
+      return true;
+    },
     
     // Flight actions
     setFlight: (flight) => {
       ensureDraftForMutation('setFlight');
       if (flight) {
+        const prev = get();
+        const mappedType = WGA_FLEET.find((a) => a.reg === flight.registration)?.type;
+        const nextType = mappedType ?? prev.aircraftConfig.type;
+        const typeChanged = nextType !== prev.aircraftConfig.type;
+
+        const nextLegCount = legCountForFlight(flight);
+        const legs = prev.legs.length === nextLegCount ? prev.legs : createDefaultLegs(nextLegCount);
+        const activeLegIndex = Math.min(prev.activeLegIndex, legs.length - 1);
+
+        const nextConfig = typeChanged
+          ? buildEffectiveAircraftConfig({
+              type: nextType,
+              fallback: prev.aircraftConfig,
+              oewOverrideKg: null,
+              positionArmOverrides: null,
+              stationArmOverrides: null,
+            })
+          : prev.aircraftConfig;
+
+        const nextPositions = typeChanged ? initializePositions(nextConfig) : prev.positions;
+
         // Build route from flight info
         const route: RouteStop[] = [
           { 
@@ -502,14 +656,25 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
           isDestination: true,
         });
         
-        const nextLegCount = legCountForFlight(flight);
-        const prev = get();
-        const legs =
-          prev.legs.length === nextLegCount ? prev.legs : createDefaultLegs(nextLegCount);
-        const activeLegIndex = Math.min(prev.activeLegIndex, legs.length - 1);
-
-        const physics = computePhysics(prev.positions, prev.aircraftConfig, legs[activeLegIndex]);
-        set({ flight, route, legs, activeLegIndex, physics });
+        const physics = computePhysics(nextPositions, nextConfig, legs[activeLegIndex]);
+        set({
+          flight,
+          selectedRegistration: flight.registration,
+          route,
+          legs,
+          activeLegIndex,
+          aircraftConfig: nextConfig,
+          positions: nextPositions,
+          warehouse: typeChanged ? [] : prev.warehouse,
+          selection: typeChanged ? { id: null, source: null } : prev.selection,
+          drag: typeChanged ? { item: null, source: null } : prev.drag,
+          toast: typeChanged ? null : prev.toast,
+          pendingDropOverride: typeChanged ? null : prev.pendingDropOverride,
+          oewOverrideKg: typeChanged ? null : prev.oewOverrideKg,
+          positionArmOverrides: typeChanged ? null : prev.positionArmOverrides,
+          stationArmOverrides: typeChanged ? null : prev.stationArmOverrides,
+          physics,
+        });
       } else {
         const legs = createDefaultLegs(1);
         const prev = get();
@@ -517,6 +682,124 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         const physics = computePhysics(prev.positions, prev.aircraftConfig, legs[0]);
         set({ flight: null, route: DEFAULT_ROUTE, legs, activeLegIndex, physics });
       }
+    },
+
+    setSelectedRegistration: (registration) => {
+      ensureDraftForMutation('setSelectedRegistration');
+      const prev = get();
+      const reg = registration && registration.trim() ? registration.trim() : null;
+      const mappedType = reg ? WGA_FLEET.find((a) => a.reg === reg)?.type : undefined;
+      const nextType = mappedType ?? prev.aircraftConfig.type;
+      const typeChanged = nextType !== prev.aircraftConfig.type;
+
+      if (!typeChanged) {
+        set({ selectedRegistration: reg });
+        return;
+      }
+
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: nextType,
+        fallback: prev.aircraftConfig,
+        oewOverrideKg: null,
+        positionArmOverrides: null,
+        stationArmOverrides: null,
+      });
+      const nextPositions = initializePositions(nextConfig);
+      const leg = prev.legs[prev.activeLegIndex] ?? prev.legs[0];
+      const physics = leg ? computePhysics(nextPositions, nextConfig, leg) : prev.physics;
+      set({
+        selectedRegistration: reg,
+        aircraftConfig: nextConfig,
+        positions: nextPositions,
+        warehouse: [],
+        selection: { id: null, source: null },
+        drag: { item: null, source: null },
+        toast: null,
+        pendingDropOverride: null,
+        oewOverrideKg: null,
+        positionArmOverrides: null,
+        stationArmOverrides: null,
+        physics,
+      });
+    },
+
+    setAircraftType: (type) => {
+      ensureDraftForMutation('setAircraftType');
+      const state = get();
+      const nextType = type || state.aircraftConfig.type;
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: nextType,
+        fallback: state.aircraftConfig,
+        oewOverrideKg: null,
+        positionArmOverrides: null,
+        stationArmOverrides: null,
+      });
+      const nextPositions = initializePositions(nextConfig);
+      const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
+      const physics = leg ? computePhysics(nextPositions, nextConfig, leg) : state.physics;
+      set({
+        aircraftConfig: nextConfig,
+        positions: nextPositions,
+        warehouse: [],
+        selection: { id: null, source: null },
+        drag: { item: null, source: null },
+        toast: null,
+        pendingDropOverride: null,
+        oewOverrideKg: null,
+        positionArmOverrides: null,
+        stationArmOverrides: null,
+        physics,
+      });
+    },
+
+    setAircraftOewKg: (oewKg) => {
+      ensureDraftForMutation('setAircraftOewKg');
+      const state = get();
+      const nextOverride = typeof oewKg === 'number' && Number.isFinite(oewKg) && oewKg > 0 ? oewKg : null;
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: state.aircraftConfig.type,
+        fallback: state.aircraftConfig,
+        oewOverrideKg: nextOverride,
+        positionArmOverrides: state.positionArmOverrides,
+        stationArmOverrides: state.stationArmOverrides,
+      });
+      const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
+      set({
+        oewOverrideKg: nextOverride,
+        aircraftConfig: nextConfig,
+        physics: leg ? computePhysics(state.positions, nextConfig, leg) : state.physics,
+      });
+    },
+
+    setAircraftMomentArms: (arms) => {
+      ensureDraftForMutation('setAircraftMomentArms');
+      const state = get();
+      const positionArmOverrides = arms?.positionArms ?? null;
+      const stationArmOverrides = arms?.stationArms ?? null;
+
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: state.aircraftConfig.type,
+        fallback: state.aircraftConfig,
+        oewOverrideKg: state.oewOverrideKg,
+        positionArmOverrides,
+        stationArmOverrides,
+      });
+
+      // Update current loaded positions' arms so cargo moments immediately reflect the override.
+      const armByPosId = new Map(nextConfig.positions.map((p) => [p.id, p.arm]));
+      const nextPositions = state.positions.map((p) => ({
+        ...p,
+        arm: armByPosId.get(p.id) ?? p.arm,
+      }));
+
+      const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
+      set({
+        positionArmOverrides,
+        stationArmOverrides,
+        aircraftConfig: nextConfig,
+        positions: nextPositions,
+        physics: leg ? computePhysics(nextPositions, nextConfig, leg) : state.physics,
+      });
     },
     
     setRoute: (route) => set({ route }),
@@ -698,13 +981,31 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     dropOnPosition: (positionId) => {
       ensureDraftForMutation('dropOnPosition');
       const { drag, positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
-      if (!drag.item) return false;
+      if (!drag.item) {
+        set({ toast: { tone: 'error', message: 'Nothing to drop (no active drag item).' } });
+        return false;
+      }
       
       const targetPos = positions.find(p => p.id === positionId);
-      if (!targetPos) return false;
-      
-      // Check weight limit
-      if (drag.item.weight > targetPos.maxWeight) {
+      if (!targetPos) {
+        set({ toast: { tone: 'error', message: `Unknown position ${positionId}.` } });
+        return false;
+      }
+
+      // ULD/deck/bulk compatibility checks + weight
+      const placement = checkCargoPlacement(drag.item, targetPos);
+      if (!placement.ok) {
+        const canOverride = placement.code !== 'overweight';
+        set({
+          toast: {
+            tone: 'error',
+            message: `Cannot place ${drag.item.uldType} in ${targetPos.id}: ${placement.reason}`,
+            canOverride,
+          },
+          pendingDropOverride: canOverride
+            ? { item: { ...drag.item }, source: drag.source, targetPositionId: targetPos.id }
+            : null,
+        });
         return false;
       }
       

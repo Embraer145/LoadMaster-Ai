@@ -19,6 +19,20 @@ let sqlJs: Awaited<ReturnType<typeof initSqlJs>> | null = null;
  * Storage key for persisting database
  */
 const DB_STORAGE_KEY = `loadmaster_db_${env.dbName}`;
+const DB_REV_KEY = `loadmaster_db_rev_${env.dbName}`;
+const DB_BROADCAST_CHANNEL = `loadmaster_db_bc_${env.dbName}`;
+
+export function getDbStorageKey(): string {
+  return DB_STORAGE_KEY;
+}
+
+export function getDbRevKey(): string {
+  return DB_REV_KEY;
+}
+
+export function getDbBroadcastChannel(): string {
+  return DB_BROADCAST_CHANNEL;
+}
 
 /**
  * Initialize sql.js and create/load database
@@ -46,16 +60,19 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
   } else {
     debugLog('Creating new database');
     db = new sqlJs.Database();
-    
-    // Run schema creation
-    db.run(SCHEMA_SQL);
-    
-    // Seed initial data
-    await seedInitialData(db);
-    
-    // Persist to storage
-    saveToStorage(db);
   }
+
+  // Ensure schema objects exist (idempotent). This also advances schema_version.
+  // NOTE: This is our lightweight migration mechanism for local sql.js persistence.
+  db.run(SCHEMA_SQL);
+
+  // Seed initial data only on brand-new DBs (best-effort).
+  if (!savedData) {
+    await seedInitialData(db);
+  }
+
+  // Persist to storage after init/seed/migrations
+  saveToStorage(db);
 
   debugLog(`Database initialized (schema v${SCHEMA_VERSION})`);
   return db;
@@ -97,9 +114,36 @@ export function saveToStorage(database?: SqlJsDatabase): void {
     }
     const base64 = btoa(parts.join(''));
     localStorage.setItem(DB_STORAGE_KEY, base64);
+    // Cross-tab sync: touching a separate key triggers a `storage` event in other tabs.
+    const rev = String(Date.now());
+    localStorage.setItem(DB_REV_KEY, rev);
+    // Also broadcast to other tabs (more reliable than storage events in some edge cases).
+    try {
+      const bc = new BroadcastChannel(DB_BROADCAST_CHANNEL);
+      bc.postMessage({ type: 'db_saved', rev });
+      bc.close();
+    } catch {
+      // ignore
+    }
     debugLog('Database saved to storage');
   } catch (error) {
     console.error('Failed to save database to storage:', error);
+  }
+}
+
+function saveToStorageNoRev(database: SqlJsDatabase): void {
+  try {
+    const data = database.export();
+    const CHUNK_SIZE = 0x2000;
+    const parts: string[] = [];
+    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+      const chunk = data.subarray(i, i + CHUNK_SIZE);
+      parts.push(String.fromCharCode(...chunk));
+    }
+    const base64 = btoa(parts.join(''));
+    localStorage.setItem(DB_STORAGE_KEY, base64);
+  } catch (error) {
+    console.error('Failed to save database to storage (no-rev):', error);
   }
 }
 
@@ -132,7 +176,36 @@ export function clearDatabase(): void {
     db = null;
   }
   localStorage.removeItem(DB_STORAGE_KEY);
+  localStorage.removeItem(DB_REV_KEY);
   debugLog('Database cleared');
+}
+
+/**
+ * Reload database from localStorage (cross-tab sync).
+ * Keeps schema up to date by re-running SCHEMA_SQL.
+ */
+export async function reloadDatabaseFromStorage(): Promise<void> {
+  // If sql.js isn't ready yet, just initialize (it will load from storage if present).
+  if (!sqlJs) {
+    await initDatabase();
+    return;
+  }
+
+  const savedData = loadFromStorage();
+  try {
+    if (db) {
+      db.close();
+      db = null;
+    }
+  } catch {
+    // ignore
+  }
+
+  db = savedData ? new sqlJs.Database(savedData) : new sqlJs.Database();
+  db.run(SCHEMA_SQL);
+  // IMPORTANT: do NOT bump DB_REV_KEY during a reload, or tabs can get into a ping-pong reload loop.
+  // Persist schema upgrades to DB_STORAGE_KEY only.
+  saveToStorageNoRev(db);
 }
 
 /**
@@ -210,20 +283,43 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
     VALUES (?, 'WGA', 'Western Global Airlines', 'WORLD WIDE', 1, ?, ?, 'synced')
   `, [wgaId, timestamp, timestamp]);
 
-  // Insert B747-400F config (simplified - full config in JSON)
-  const configId = generateId();
-  const configJson = JSON.stringify({
-    type: 'B747-400F',
-    limits: { OEW: 165000, MZFW: 288000, MTOW: 396890, MLW: 302090 },
-    cgLimits: { forward: 11, aft: 33 },
-    mac: { refChord: 327.8, leMAC: 1150 },
-    fuelArm: 1300,
-  });
+  // Insert aircraft configs (simplified - full config in code; this JSON is a stub)
+  const aircraftConfigs = [
+    {
+      id: generateId(),
+      type: 'B747-400F',
+      displayName: 'Boeing 747-400 Freighter',
+    },
+    {
+      id: generateId(),
+      type: 'B747-400F-NUMERIC',
+      displayName: 'Boeing 747-400F (Numeric Prototype)',
+    },
+    {
+      id: generateId(),
+      type: 'B747-400F-UPS',
+      displayName: 'Boeing 747-400F (UPS Prototype)',
+    },
+  ] as const;
 
-  database.run(`
-    INSERT INTO aircraft_configs (id, operator_id, type, display_name, config_json, version, created_at, updated_at, sync_status)
-    VALUES (?, ?, 'B747-400F', 'Boeing 747-400 Freighter', ?, 1, ?, ?, 'synced')
-  `, [configId, wgaId, configJson, timestamp, timestamp]);
+  const configIdByType = new Map<string, string>(aircraftConfigs.map((c) => [c.type, c.id]));
+
+  for (const c of aircraftConfigs) {
+    const configJson = JSON.stringify({
+      type: c.type,
+      limits: { OEW: 165000, MZFW: 288000, MTOW: 396890, MLW: 302090 },
+      cgLimits: { forward: 11, aft: 33 },
+      mac: { refChord: 327.8, leMAC: 1150 },
+      fuelArm: 1300,
+    });
+    database.run(
+      `
+      INSERT INTO aircraft_configs (id, operator_id, type, display_name, config_json, version, created_at, updated_at, sync_status)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'synced')
+      `,
+      [c.id, wgaId, c.type, c.displayName, configJson, timestamp, timestamp]
+    );
+  }
 
   // Insert fleet aircraft
   const fleet = [
@@ -232,13 +328,58 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
     { reg: 'N344KD', type: 'B747-400F' },
     { reg: 'N356KD', type: 'B747-400F' },
     { reg: 'N452SN', type: 'B747-400F' },
+
+    // Demo prototypes (per user request)
+    { reg: 'KOREAN', type: 'B747-400F' },
+    { reg: 'ATLAS', type: 'B747-400F-NUMERIC' },
+    { reg: 'UPS', type: 'B747-400F-UPS' },
+    { reg: 'CUSTOM', type: 'B747-400F' },
   ];
 
   for (const aircraft of fleet) {
+    const configId = configIdByType.get(aircraft.type) ?? configIdByType.get('B747-400F')!;
     database.run(`
       INSERT INTO fleet_aircraft (id, operator_id, registration, aircraft_type, config_id, active, created_at, updated_at, sync_status)
       VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'synced')
     `, [generateId(), wgaId, aircraft.reg, aircraft.type, configId, timestamp, timestamp]);
+  }
+
+  // Seed default airframe layouts (per registration).
+  // Default assumption: typical 747 freighter door set present; super_admin can override per tail.
+  const defaultDoors = [
+    { kind: 'nose', enabled: true, side: 'L', anchor: { key: 'nose', markerStyle: 'vertical' } },
+    { kind: 'main_side', enabled: true, side: 'L', anchor: { key: 'main_side_PL', slotId: 'PL', markerStyle: 'horizontal_under' } },
+    { kind: 'lower_fwd', enabled: true, side: 'R', anchor: { key: 'lower_fwd', slotId: '21P', markerStyle: 'horizontal_beside' } },
+    { kind: 'lower_aft', enabled: true, side: 'R', anchor: { key: 'lower_aft', slotId: '31P', markerStyle: 'horizontal_beside' } },
+    { kind: 'bulk', enabled: true, side: 'R', anchor: { key: 'bulk', slotId: '52', markerStyle: 'horizontal_under' } },
+  ];
+  for (const aircraft of fleet) {
+    const labelPreset =
+      aircraft.type === 'B747-400F-UPS'
+        ? 'ups'
+        : aircraft.type === 'B747-400F-NUMERIC'
+          ? 'numeric'
+          : (aircraft.reg === 'CUSTOM' ? 'blank' : 'alphabetic');
+    const doors =
+      aircraft.type === 'B747-400F-UPS'
+        ? defaultDoors.map((d) => (d.kind === 'bulk' ? { ...d, enabled: false } : d))
+        : defaultDoors;
+    const layoutJson = JSON.stringify({
+      version: 1,
+      locked: true,
+      labelPreset,
+      doors,
+      oewKg: 165000,
+    });
+    database.run(
+      `
+      INSERT INTO airframe_layouts (
+        id, operator_id, registration, aircraft_type, layout_json, version, locked,
+        created_at, updated_at, sync_status
+      ) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, 'synced')
+      `,
+      [generateId(), wgaId, aircraft.reg, aircraft.type, layoutJson, timestamp, timestamp]
+    );
   }
 
   debugLog('Initial data seeded');

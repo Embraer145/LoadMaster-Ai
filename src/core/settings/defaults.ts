@@ -390,6 +390,7 @@ export const DEFAULT_UNLOAD_SETTINGS: UnloadSettings = {
  */
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   theme: 'dark',
+  cargoColorMode: 'handling',
   defaultWarehouseSort: 'none',
   showPositionIds: true,
   showWeightOnPositions: true,

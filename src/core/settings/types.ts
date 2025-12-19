@@ -182,6 +182,12 @@ export type UnloadStrategy =
 export interface DisplaySettings {
   /** Theme */
   theme: 'dark' | 'light' | 'auto';
+  /**
+   * Cargo color mode.
+   * - handling: current behavior (GEN/PER/DG/PRI/MAIL)
+   * - uld: color by ULD family/type (PMC/P6P/LD3/LD1/BULK)
+   */
+  cargoColorMode: 'handling' | 'uld';
   /** Default warehouse (staging bar) sort mode */
   defaultWarehouseSort: WarehouseSortMode;
   /** Show position IDs on deck view */
