@@ -27,12 +27,6 @@ export const WGA_FLEET: FleetAircraft[] = [
   { reg: 'N356KD', fleet: 'B747', type: 'B747-400F' },
   { reg: 'N452SN', fleet: 'B747', type: 'B747-400F' },
 
-  // Demo prototypes (for showing different operator naming/layout conventions)
-  { reg: 'KOREAN', fleet: 'B747', type: 'B747-400F' },
-  { reg: 'ATLAS', fleet: 'B747', type: 'B747-400F-NUMERIC' },
-  { reg: 'UPS', fleet: 'B747', type: 'B747-400F-UPS' },
-  { reg: 'CUSTOM', fleet: 'B747', type: 'B747-400F' },
-
   // MD-11 fleet (best-effort from public fleet listings; verify/adjust as needed)
   { reg: 'N411SN', fleet: 'MD11', type: 'MD-11F' },
   { reg: 'N412SN', fleet: 'MD11', type: 'MD-11F' },

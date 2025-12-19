@@ -4,7 +4,7 @@
  * NOTE: This is scaffolding for future real auth + billing attribution.
  */
 
-export type UserRole = 'test' | 'worker' | 'admin';
+export type UserRole = 'test' | 'worker' | 'admin' | 'super_admin';
 
 export interface UserProfile {
   id: string;

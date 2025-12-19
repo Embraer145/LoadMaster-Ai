@@ -50,6 +50,8 @@ export interface PhysicsResult {
   forwardLimit: number;
   /** Aft limit at current weight */
   aftLimit: number;
+  /** Lateral imbalance (main deck L-R weight difference in kg) */
+  lateralImbalanceKg: number;
 }
 
 /**
@@ -68,6 +70,8 @@ export interface FlightInfo {
   stopover: string | null;
   /** Flight date */
   date: string;
+  /** Whether NOTOC (Notification to Captain) is required for dangerous goods */
+  notocRequired?: boolean;
 }
 
 /**

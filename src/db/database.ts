@@ -328,12 +328,6 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
     { reg: 'N344KD', type: 'B747-400F' },
     { reg: 'N356KD', type: 'B747-400F' },
     { reg: 'N452SN', type: 'B747-400F' },
-
-    // Demo prototypes (per user request)
-    { reg: 'KOREAN', type: 'B747-400F' },
-    { reg: 'ATLAS', type: 'B747-400F-NUMERIC' },
-    { reg: 'UPS', type: 'B747-400F-UPS' },
-    { reg: 'CUSTOM', type: 'B747-400F' },
   ];
 
   for (const aircraft of fleet) {
@@ -359,7 +353,7 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
         ? 'ups'
         : aircraft.type === 'B747-400F-NUMERIC'
           ? 'numeric'
-          : (aircraft.reg === 'CUSTOM' ? 'blank' : 'alphabetic');
+          : 'alphabetic';
     const doors =
       aircraft.type === 'B747-400F-UPS'
         ? defaultDoors.map((d) => (d.kind === 'bulk' ? { ...d, enabled: false } : d))

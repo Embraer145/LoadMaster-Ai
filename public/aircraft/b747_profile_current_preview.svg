@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 240">
+  <!--
+    Side Profile Shape (Simple Rounded Rectangles)
+    Main fuselage + upper-deck hump (747 cockpit/jumpseat area)
+  -->
+
+  <!-- Background for contrast -->
+  <rect x="0" y="0" width="980" height="240" fill="#0b1220" />
+
+  <!-- Main fuselage -->
+  <rect 
+    x="60" 
+    y="80" 
+    width="880" 
+    height="100" 
+    rx="50" 
+    ry="50" 
+    fill="rgba(15, 23, 42, 0.25)" 
+    stroke="rgba(148, 163, 184, 0.70)" 
+    stroke-width="2.5"
+  />
+  
+  <!-- Upper-deck hump (pilots/jumpseats) -->
+  <rect 
+    x="160" 
+    y="50" 
+    width="280" 
+    height="45" 
+    rx="22" 
+    ry="22" 
+    fill="rgba(15, 23, 42, 0.35)" 
+    stroke="rgba(148, 163, 184, 0.65)" 
+    stroke-width="2"
+  />
+</svg>

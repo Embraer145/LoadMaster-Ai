@@ -8,7 +8,7 @@
 /**
  * Schema version for migrations
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * All table creation SQL statements
@@ -72,6 +72,26 @@ CREATE TABLE IF NOT EXISTS fleet_aircraft (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fleet_registration ON fleet_aircraft(registration);
 CREATE INDEX IF NOT EXISTS idx_fleet_operator ON fleet_aircraft(operator_id);
+
+-- -----------------------------------------------------------------------------
+-- Airframe Layouts (per registration)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS airframe_layouts (
+  id TEXT PRIMARY KEY,
+  operator_id TEXT,
+  registration TEXT NOT NULL UNIQUE,
+  aircraft_type TEXT NOT NULL,
+  layout_json TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  locked INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  sync_status TEXT NOT NULL DEFAULT 'local_only',
+  FOREIGN KEY (operator_id) REFERENCES operators(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_airframe_layouts_registration ON airframe_layouts(registration);
+CREATE INDEX IF NOT EXISTS idx_airframe_layouts_operator ON airframe_layouts(operator_id);
 
 -- -----------------------------------------------------------------------------
 -- Flight Plans
@@ -214,6 +234,7 @@ export const TABLE_NAMES = [
   'operators',
   'aircraft_configs',
   'fleet_aircraft',
+  'airframe_layouts',
   'flight_plans',
   'load_plans',
   'cargo_items',

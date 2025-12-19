@@ -46,6 +46,8 @@ interface HeaderProps {
   onFlightChange: (flight: FlightInfo | null) => void;
   /** Inform the app of aircraft selection even if the flight isn’t fully specified yet. */
   onRegistrationSelect?: (registration: string) => void;
+  /** Inform the app of the aircraft type selection (lets the app swap templates/configs immediately). */
+  onAircraftTypeSelect?: (aircraftType: string) => void;
   onImport: () => void;
   onTestSetup: () => void;
   onOpenSettings?: () => void;
@@ -62,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   flight,
   onFlightChange,
   onRegistrationSelect,
+  onAircraftTypeSelect,
   onImport,
   onTestSetup,
   onOpenSettings,
@@ -72,6 +75,8 @@ export const Header: React.FC<HeaderProps> = ({
   dbReady,
 }) => {
   const [fleet, setFleet] = useState<'B747' | 'MD11'>('B747');
+  const [mode, setMode] = useState<'real' | 'demo'>('real');
+  const [demoProfile, setDemoProfile] = useState<'KOREAN' | 'ATLAS' | 'UPS'>('UPS');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [reg, setReg] = useState(flight?.registration ?? '');
   const [flightNumber, setFlightNumber] = useState(flight?.flightNumber ?? '');
@@ -95,6 +100,14 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [flight]);
 
+  const demoProfiles: Array<{ id: 'KOREAN' | 'ATLAS' | 'UPS'; label: string; aircraftType: string; syntheticReg: string }> = [
+    { id: 'KOREAN', label: 'Korean • Alphabetic', aircraftType: 'B747-400F', syntheticReg: 'DEMO_KOREAN' },
+    { id: 'ATLAS', label: 'Atlas • Numeric', aircraftType: 'B747-400F-NUMERIC', syntheticReg: 'DEMO_ATLAS' },
+    { id: 'UPS', label: 'UPS • UPS', aircraftType: 'B747-400F-UPS', syntheticReg: 'DEMO_UPS' },
+  ];
+
+  const activeDemo = demoProfiles.find((p) => p.id === demoProfile) ?? demoProfiles[0]!;
+
   const updateFlight = (updates: Partial<{
     reg: string;
     flightNumber: string;
@@ -103,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
     stopover: string;
     date: string;
   }>) => {
-    const newReg = updates.reg ?? reg;
+    const newReg = mode === 'demo' ? activeDemo.syntheticReg : (updates.reg ?? reg);
     const newFlight = updates.flightNumber ?? flightNumber;
     const newOrigin = updates.origin ?? origin;
     const newDest = updates.destination ?? destination;
@@ -126,6 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleTestSetup = () => {
     setFleet('B747');
+    setMode('real');
     setReg('N344KD');
     setFlightNumber('KD3402');
     setOrigin('LAX');
@@ -185,6 +199,38 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Flight Selection Controls */}
         <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+          {/* Mode (Real vs Demo) */}
+          <div className="flex flex-col px-2">
+            <label className="text-[8px] font-bold text-slate-500 uppercase">Mode</label>
+            <select
+              className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer w-16"
+              value={mode}
+              onChange={(e) => {
+                const next = e.target.value as 'real' | 'demo';
+                setMode(next);
+                if (next === 'demo') {
+                  // Apply demo selection immediately (swap aircraft type + synthetic registration).
+                  onAircraftTypeSelect?.(activeDemo.aircraftType);
+                  onRegistrationSelect?.(activeDemo.syntheticReg);
+                  // Avoid accidental old tail staying in the UI.
+                  setReg('');
+                  updateFlight({ reg: '' });
+                } else {
+                  // Back to real mode: clear synthetic reg from the flight until a tail is chosen.
+                  setReg('');
+                  onRegistrationSelect?.('');
+                  updateFlight({ reg: '' });
+                }
+              }}
+              title="Real ops vs demo (no tail selection)"
+            >
+              <option value="real">Real</option>
+              <option value="demo">Demo</option>
+            </select>
+          </div>
+
+          <div className="w-px h-8 bg-slate-800" />
+
           {/* Fleet */}
           <div className="flex flex-col px-2">
             <label className="text-[8px] font-bold text-slate-500 uppercase">Fleet</label>
@@ -198,6 +244,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setReg('');
                 updateFlight({ reg: '' });
               }}
+              disabled={mode === 'demo'}
             >
               <option value="B747">747</option>
               <option value="MD11">MD-11</option>
@@ -206,25 +253,52 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="w-px h-8 bg-slate-800" />
 
-          {/* Registration */}
-          <div className="flex flex-col px-2">
-            <label className="text-[8px] font-bold text-slate-500 uppercase">A/C</label>
-            <select 
-              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer w-20" 
-              value={reg} 
-              onChange={e => { 
-                const next = e.target.value;
-                setReg(next);
-                onRegistrationSelect?.(next);
-                updateFlight({ reg: next }); 
-              }}
-            >
-              <option value="">--</option>
-              {fleetRegs.map(a => (
-                <option key={a.reg} value={a.reg}>{a.reg}</option>
-              ))}
-            </select>
-          </div>
+          {/* Registration (Real) OR Demo Profile (Demo) */}
+          {mode === 'demo' ? (
+            <div className="flex flex-col px-2">
+              <label className="text-[8px] font-bold text-slate-500 uppercase">Demo</label>
+              <select
+                className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer w-28"
+                value={demoProfile}
+                onChange={(e) => {
+                  const next = e.target.value as typeof demoProfile;
+                  setDemoProfile(next);
+                  const d = demoProfiles.find((p) => p.id === next) ?? demoProfiles[0]!;
+                  onAircraftTypeSelect?.(d.aircraftType);
+                  onRegistrationSelect?.(d.syntheticReg);
+                  updateFlight({ reg: '' });
+                }}
+                title="Demo profile (no tail number)"
+              >
+                {demoProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex flex-col px-2">
+              <label className="text-[8px] font-bold text-slate-500 uppercase">A/C</label>
+              <select 
+                className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer w-20" 
+                value={reg} 
+                onChange={e => { 
+                  const next = e.target.value;
+                  setReg(next);
+                  onRegistrationSelect?.(next);
+                  const match = WGA_FLEET.find((a) => a.reg === next);
+                  if (match?.type) onAircraftTypeSelect?.(match.type);
+                  updateFlight({ reg: next }); 
+                }}
+              >
+                <option value="">--</option>
+                {fleetRegs.map(a => (
+                  <option key={a.reg} value={a.reg}>{a.reg}</option>
+                ))}
+              </select>
+            </div>
+          )}
           
           <div className="w-px h-8 bg-slate-800" />
           

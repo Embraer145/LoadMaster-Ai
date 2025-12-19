@@ -1,4 +1,4 @@
-import type { EnvConfig } from '@config/env';
+import type { EnvConfig } from '@/config/env';
 import type { AppSettings } from '@core/settings';
 import type { ComplianceCheck, ComplianceReport, ComplianceStatus } from './types';
 

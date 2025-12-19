@@ -25,6 +25,7 @@ import { AircraftProfile } from './AircraftProfile';
 import { FuselageRuler } from './FuselageRuler';
 import { useSettingsStore } from '@core/settings';
 import { getCargoVisual, getHandlingBadges } from '@/ui/utils/cargoVisual';
+import { getB747Envelope, validateAgainstEnvelope } from '@core/envelope';
 
 // Door styling (operator request): RED.
 const DOOR = {
@@ -312,8 +313,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
         )}
         {primary?.markerStyle === 'horizontal_beside' && (
           // Lower-deck door markers: place on the TOP edge of the slot (not vertically centered),
-          // just outside the right edge, with the same width as the slot.
-          <div className={`absolute ${besideBarTopClass} left-[calc(100%+4px)] w-full h-2 ${DOOR.line} rounded z-40`} />
+          // within the slot bounds (so anchors like 12P don't "spill" into the wing-box area).
+          <div className={`absolute ${besideBarTopClass} left-0 right-0 h-2 ${DOOR.line} rounded z-40`} />
         )}
 
         {primary && primary.markerStyle === 'horizontal_under' && (
@@ -324,7 +325,7 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
           </div>
         )}
         {primary && primary.markerStyle === 'horizontal_beside' && (
-          <div className={`absolute ${besideLabelTopClass} left-[calc(100%+4px)] z-50 w-full flex justify-center`}>
+          <div className={`absolute ${besideLabelTopClass} left-0 right-0 z-50 flex justify-center`}>
             <div className={`px-2 py-0.5 ${DOOR.pillBg} text-white text-[8px] font-black rounded whitespace-nowrap flex items-center gap-1 shadow`}>
               <DoorOpen size={10} /> {primary.label}
             </div>
@@ -503,17 +504,42 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                 
                     {(() => {
                       const slotW = 36;
-                      const compactW = 30;
                       const labelH = 16;
+                      const scaleFor = (id: string) => {
+                        const p = getPosition(id) as any;
+                        const h = p?.constraints?.maxHeightIn;
+                        // Visual hint only (best-effort): smaller forward/shorter envelopes, slightly bigger for tall envelopes.
+                        if (typeof h === 'number') {
+                          if (h <= 70) return 0.8;
+                          if (h <= 96) return 0.85;
+                          if (h >= 118) return 1.05;
+                        }
+                        return 1.0;
+                      };
                       const mk = (id: string, y: number, w: number, opts?: { sizeVariant?: 'normal' | 'compact' }) => {
                         const p = getPosition(id);
                         const arm = Number.isFinite(p.arm) ? Math.round(p.arm) : null;
                         const x = mainDeckArmX.toX(typeof p.arm === 'number' ? p.arm : 0);
+                        const s = scaleFor(id);
+                        // Keep slots from looking "top-justified" when scaled:
+                        // - Top row (STARBOARD/R): push down so their bottoms stay aligned
+                        // - Middle row: keep centered
+                        // - Bottom row (PORT/L): keep tops aligned
+                        const baseH = opts?.sizeVariant === 'compact' ? 40 : 56; // matches DeckSlot h-10 vs h-14
+                        const rowKind = y < 60 ? 'top' : y > 120 ? 'bottom' : 'middle';
+                        const dy =
+                          rowKind === 'top' ? (1 - s) * baseH : rowKind === 'middle' ? (1 - s) * (baseH / 2) : 0;
                         return (
                           <div
                             key={id}
-                            className="absolute -translate-x-1/2"
-                            style={{ left: `${x}px`, top: `${y}px`, width: `${w}px` }}
+                            className="absolute"
+                            style={{
+                              left: `${x}px`,
+                              top: `${y + dy}px`,
+                              width: `${w}px`,
+                              transform: `translateX(-50%) scale(${s})`,
+                              transformOrigin: 'center top',
+                            }}
                           >
                             {renderSlot(id, opts)}
                             <div
@@ -533,7 +559,8 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                       }
                       // Centerline: A2, B1, A1, T
                       out.push(mk('A2', 86, slotW));
-                      out.push(mk('B1', 86, compactW, { sizeVariant: 'compact' }));
+                      // B1 was previously rendered compact; treat as normal unless manual data says otherwise.
+                      out.push(mk('B1', 86, slotW));
                       out.push(mk('A1', 86, slotW));
                       out.push(mk('T', 86, slotW));
                       // Bottom row (PORT/L): C..S
@@ -1070,11 +1097,62 @@ export const AircraftDiagram: React.FC<AircraftDiagramProps> = ({
                 ? 'bg-red-900/20 border-red-900/50 text-red-300'
                 : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-300'
             }`}>
-              <div className="font-bold text-[12px] uppercase tracking-wider">
-                {physics.isOverweight || physics.isUnbalanced ? 'Restricted' : 'Ready for Dispatch'}
-              </div>
-              <div className="mt-1 text-[10px] opacity-80">
-                ZFW: {(physics.zfw / 1000).toFixed(1)}t
+              <div className="flex items-start gap-2">
+                <div className="flex-shrink-0">
+                  <div className="font-bold text-[12px] uppercase tracking-wider">
+                    {physics.isOverweight || physics.isUnbalanced ? 'Restricted' : 'Ready for Dispatch'}
+                  </div>
+                  <div className="mt-1 text-[10px] opacity-80">
+                    ZFW: {(physics.zfw / 1000).toFixed(1)}t
+                  </div>
+                </div>
+
+                {/* Why out of limits? (when restricted) - next to RESTRICTED */}
+                {(physics.isOverweight || physics.isUnbalanced) && (() => {
+                  const takeoffEnvelope = getB747Envelope('takeoff');
+                  const zfwEnvelope = getB747Envelope('zero_fuel');
+                  const landingEnvelope = getB747Envelope('landing');
+                  
+                  const towValidation = validateAgainstEnvelope(physics.weight, physics.towCG, takeoffEnvelope);
+                  const zfwValidation = validateAgainstEnvelope(physics.zfw, physics.zfwCG, zfwEnvelope);
+                  const lwValidation = validateAgainstEnvelope(physics.lw, physics.lwCG, landingEnvelope);
+
+                  return (
+                    (!towValidation.isValid || !zfwValidation.isValid || !lwValidation.isValid) && (
+                      <div className="flex-1 bg-slate-950/60 border border-slate-800 rounded p-2">
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                          Why out of limits?
+                        </div>
+                        <div className="mt-1 space-y-0.5 text-[9px] text-slate-300">
+                          {!towValidation.isValid && (
+                            <div>
+                              <span className="font-bold text-emerald-300">TOW (Takeoff Env.):</span>{' '}
+                              <span className="text-slate-200">
+                                {(towValidation.violations.find(v => v.severity === 'error') ?? towValidation.violations[0])?.message ?? 'Out of limits'}
+                              </span>
+                            </div>
+                          )}
+                          {!zfwValidation.isValid && (
+                            <div>
+                              <span className="font-bold text-blue-300">ZFW (ZFW Env.):</span>{' '}
+                              <span className="text-slate-200">
+                                {(zfwValidation.violations.find(v => v.severity === 'error') ?? zfwValidation.violations[0])?.message ?? 'Out of limits'}
+                              </span>
+                            </div>
+                          )}
+                          {!lwValidation.isValid && (
+                            <div>
+                              <span className="font-bold text-amber-300">LW (Landing Env.):</span>{' '}
+                              <span className="text-slate-200">
+                                {(lwValidation.violations.find(v => v.severity === 'error') ?? lwValidation.violations[0])?.message ?? 'Out of limits'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  );
+                })()}
               </div>
 
               <div className="mt-3 flex gap-2">

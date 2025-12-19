@@ -31,7 +31,8 @@ const ULD_SPECS: Record<UldType, UldSpec> = {
     baseIn: { length: 125, width: 96 },
     tareKg: 110,
     maxGrossKg: 6800,
-    notes: 'Typical main-deck pallet base size. Limits vary by aircraft/operator.',
+    notes:
+      'Base pallet (no fixed contour height). Actual load build height depends on contour code + aircraft position limits; set "Load Height (in)" in Inspector.',
   },
   P6P: {
     uldType: 'P6P',
@@ -39,7 +40,8 @@ const ULD_SPECS: Record<UldType, UldSpec> = {
     baseIn: { length: 125, width: 96 },
     tareKg: 110,
     maxGrossKg: 6800,
-    notes: 'Similar footprint to PMC; contour/lockdown differs by net/assembly.',
+    notes:
+      'Base pallet (no fixed contour height). Similar footprint to PMC; contour/lockdown differs by net/assembly. Set "Load Height (in)" in Inspector.',
   },
   LD3: {
     uldType: 'LD3',

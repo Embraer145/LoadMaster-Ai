@@ -153,3 +153,15 @@ export interface UserPreferencesEntity {
   updatedAt: string;
 }
 
+/**
+ * Airframe layout entity (per registration)
+ */
+export interface AirframeLayoutEntity extends BaseEntity {
+  operatorId?: string;
+  registration: string;
+  aircraftType: string;
+  layoutJson: string;
+  version: number;
+  locked: boolean;
+}
+

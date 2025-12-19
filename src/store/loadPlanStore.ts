@@ -21,6 +21,10 @@ import type {
   AircraftConfig,
   CargoTypeInfo,
   Destination,
+  PositionConstraint,
+  AircraftLimits,
+  CGLimits,
+  MACData,
 } from '@core/types';
 import { calculateFlightPhysics } from '@core/physics';
 import type { OptimizationMode } from '@core/optimizer';
@@ -76,11 +80,17 @@ interface LegFuel {
   taxiFuelKg: number;
   /** Trip burn to landing (kg) */
   tripBurnKg: number;
+  /** Ballast fuel (kg) - fuel used for weight/balance purposes */
+  ballastFuelKg: number;
 }
 
 interface LegMisc {
   /** Flight crew count (min 2, max 4 for this simulator UI) */
   crewCount: number;
+  /** Jumpseaters on upper deck (0–1 in this simulator config) */
+  jumpseatCount: number;
+  /** Additional riders (0–N; simulator default supports up to 6) */
+  riderCount: number;
   /** Additional items/equipment weights (kg) */
   itemsFwdKg: number;
   itemsAftKg: number;
@@ -105,6 +115,16 @@ interface LoadPlanState {
   /** Optional per-registration overrides for moment arms (inches from datum). */
   positionArmOverrides: Record<string, number> | null;
   stationArmOverrides: Record<string, number> | null;
+  /** Optional per-registration per-position constraint overrides (geometry/contours). */
+  positionConstraintOverrides: Record<string, PositionConstraint> | null;
+  /** Optional per-registration overrides for core aircraft config fields (limits/CG/MAC/fuel/max weights). */
+  limitsOverride: AircraftLimits | null;
+  cgLimitsOverride: CGLimits | null;
+  macOverride: MACData | null;
+  fuelArmOverride: number | null;
+  positionMaxWeightOverrides: Record<string, number> | null;
+  isSampleDataOverride: boolean | null;
+  dataProvenanceOverride: AircraftConfig['dataProvenance'] | null;
   
   // Flight info
   flight: FlightInfo | null;
@@ -169,6 +189,18 @@ interface LoadPlanState {
   setAircraftOewKg: (oewKg: number | null) => void;
   /** Override cargo-position + station moment arms (inches from datum) for current registration. */
   setAircraftMomentArms: (arms: { positionArms?: Record<string, number>; stationArms?: Record<string, number> } | null) => void;
+  /** Override per-position envelope/contour constraints for current registration. */
+  setPositionConstraintOverrides: (constraints: Record<string, PositionConstraint> | null) => void;
+  /** Override core aircraft config fields for current registration (limits/CG/MAC/fuel/max weights/sample/provenance). */
+  setAircraftCoreOverrides: (overrides: {
+    limits?: AircraftLimits;
+    cgLimits?: CGLimits;
+    mac?: MACData;
+    fuelArm?: number;
+    positionMaxWeights?: Record<string, number>;
+    isSampleData?: boolean;
+    dataProvenance?: AircraftConfig['dataProvenance'];
+  } | null) => void;
   setRoute: (route: RouteStop[]) => void;
   /** Set block/ramp fuel for the active leg (kg) */
   setFuel: (fuel: number) => void;
@@ -184,6 +216,7 @@ interface LoadPlanState {
   importManifest: (count?: number) => void;
   clearAll: () => void;
   updateCargoWeight: (cargoId: string, newWeight: number) => void;
+  updateCargoHeightIn: (cargoId: string, heightIn: number | null) => void;
   
   // Position actions
   loadCargoAtPosition: (positionId: string, cargo: CargoItem) => void;
@@ -271,6 +304,38 @@ export const DEFAULT_ROUTE: RouteStop[] = [
 function generateManifest(count: number = 35, route: RouteStop[]): CargoItem[] {
   const manifest: CargoItem[] = [];
   const typeKeys = Object.keys(CARGO_TYPES);
+
+  const randInt = (min: number, max: number) => {
+    const lo = Math.ceil(min);
+    const hi = Math.floor(max);
+    return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+  };
+
+  // For pallets, height is not intrinsic; we must model the built-up load height.
+  // We intentionally generate some items that will violate 96"/118" zones so the UI warns correctly.
+  const randomLoadHeightIn = (uldType: CargoItem['uldType']): number | undefined => {
+    switch (uldType) {
+      case 'PMC':
+      case 'P6P': {
+        const r = Math.random();
+        // 65%: <=96 (fits most forward/short zones)
+        // 25%: 97–118 (fits tall zones only)
+        // 10%: 119–130 (conflicts even in tall zones)
+        if (r < 0.65) return randInt(60, 96);
+        if (r < 0.9) return randInt(97, 118);
+        return randInt(119, 130);
+      }
+      case 'LD1':
+      case 'LD3': {
+        const r = Math.random();
+        // Typical belly container family around 64"; include a small conflict rate.
+        if (r < 0.8) return randInt(40, 64);
+        return randInt(65, 72);
+      }
+      default:
+        return undefined;
+    }
+  };
   
   // Get valid destinations (all stops except origin)
   const validDestinations = route.filter(stop => !stop.isOrigin);
@@ -290,11 +355,13 @@ function generateManifest(count: number = 35, route: RouteStop[]): CargoItem[] {
 
     const uldType = pickUldType(isMain ? 'MAIN' : 'LOWER');
     const compatibleDoors = getCompatibleDoors(uldType, isMain ? 'MAIN' : 'LOWER');
+    const heightIn = randomLoadHeightIn(uldType);
     
     manifest.push({
       id: `ULD-${Math.floor(Math.random() * 90000) + 10000}`,
       awb: `016-${Math.floor(Math.random() * 8999999) + 1000000}`,
       weight: Math.floor(Math.random() * (isMain ? 5000 : 2500) + 500),
+      heightIn,
       type: CARGO_TYPES[typeKey],
       dest: {
         code: dest.code,
@@ -372,9 +439,12 @@ function createDefaultLegs(count: number): LegInputs[] {
       blockFuelKg: 40000,
       taxiFuelKg: 0,
       tripBurnKg: 20000,
+      ballastFuelKg: 0,
     },
     misc: {
       crewCount: 2,
+      jumpseatCount: 0,
+      riderCount: 0,
       itemsFwdKg: std.additionalItemsDefaultKg,
       itemsAftKg: 0,
       itemsOtherKg: 0,
@@ -396,9 +466,31 @@ function computeStationLoads(
   // - settings.standardWeights.crewTotalKg is treated as the standard *2-crew* total (pilots).
   // - UI allows 2–4 crew, so we scale linearly from the 2-crew baseline.
   const crewCount = Math.max(2, Math.min(4, leg.misc.crewCount || 2));
-  const crewWeightKg = std.crewTotalKg > 0 ? (std.crewTotalKg * crewCount) / 2 : 0;
+  // If crewTotalKg isn't configured yet (0), fall back to per-person standard weight so crew count still affects W&B.
+  const crewWeightKg =
+    std.crewTotalKg > 0
+      ? (std.crewTotalKg * crewCount) / 2
+      : (std.standardRiderKg > 0 ? std.standardRiderKg * crewCount : 0);
   if (has('CREW_FLIGHT_DECK') && crewWeightKg > 0) {
     loads.push({ stationId: 'CREW_FLIGHT_DECK', weight: crewWeightKg });
+  }
+
+  // Jumpseat + riders (upper deck)
+  const stdRiderKg = std.standardRiderKg > 0 ? std.standardRiderKg : 0;
+  const jumpseatCount = Math.max(0, Math.min(1, leg.misc.jumpseatCount || 0));
+  if (stdRiderKg > 0 && jumpseatCount > 0 && has('JUMPSEAT_1')) {
+    // In this simulator, we treat jumpseater as standard rider weight at a specific station arm.
+    loads.push({ stationId: 'JUMPSEAT_1', weight: stdRiderKg * jumpseatCount });
+  }
+
+  const maxRiders = Math.max(0, Math.min(std.maxAdditionalRiders ?? 6, 6));
+  const riderCount = Math.max(0, Math.min(maxRiders, leg.misc.riderCount || 0));
+  if (stdRiderKg > 0 && riderCount > 0) {
+    for (let i = 1; i <= riderCount; i++) {
+      const id = `RIDER_${i}`;
+      if (!has(id)) continue;
+      loads.push({ stationId: id, weight: stdRiderKg });
+    }
   }
 
   // Additional items / equipment
@@ -456,18 +548,93 @@ function withMomentArmOverrides(
   return { ...config, positions, stations };
 }
 
+function withPositionConstraintOverrides(
+  config: AircraftConfig,
+  overrides: Record<string, PositionConstraint> | null
+): AircraftConfig {
+  if (!overrides) return config;
+  const positions = config.positions.map((p) => {
+    const patch = overrides[p.id];
+    if (!patch) return p;
+    return {
+      ...p,
+      constraints: { ...(p.constraints ?? {}), ...patch, source: patch.source ?? 'user' },
+    };
+  });
+  return { ...config, positions };
+}
+
+function withLimitsOverride(config: AircraftConfig, limits: AircraftLimits | null): AircraftConfig {
+  if (!limits) return config;
+  return { ...config, limits: { ...config.limits, ...limits } };
+}
+
+function withCgLimitsOverride(config: AircraftConfig, cgLimits: CGLimits | null): AircraftConfig {
+  if (!cgLimits) return config;
+  return { ...config, cgLimits: { ...config.cgLimits, ...cgLimits } };
+}
+
+function withMacOverride(config: AircraftConfig, mac: MACData | null): AircraftConfig {
+  if (!mac) return config;
+  return { ...config, mac: { ...config.mac, ...mac } };
+}
+
+function withFuelArmOverride(config: AircraftConfig, fuelArm: number | null): AircraftConfig {
+  if (typeof fuelArm !== 'number' || !Number.isFinite(fuelArm)) return config;
+  if (config.fuelArm === fuelArm) return config;
+  return { ...config, fuelArm };
+}
+
+function withPositionMaxWeightOverrides(config: AircraftConfig, map: Record<string, number> | null): AircraftConfig {
+  if (!map) return config;
+  const positions = config.positions.map((p) => {
+    const override = map[p.id];
+    if (typeof override !== 'number' || !Number.isFinite(override) || override <= 0) return p;
+    return { ...p, maxWeight: override };
+  });
+  return { ...config, positions };
+}
+
+function withProvenanceOverrides(
+  config: AircraftConfig,
+  input: { isSampleData: boolean | null; dataProvenance: AircraftConfig['dataProvenance'] | null }
+): AircraftConfig {
+  let next = config;
+  if (typeof input.isSampleData === 'boolean') next = { ...next, isSampleData: input.isSampleData };
+  if (input.dataProvenance != null) next = { ...next, dataProvenance: input.dataProvenance };
+  return next;
+}
+
 function buildEffectiveAircraftConfig(input: {
   type: string;
   fallback: AircraftConfig;
   oewOverrideKg: number | null;
   positionArmOverrides: Record<string, number> | null;
   stationArmOverrides: Record<string, number> | null;
+  positionConstraintOverrides: Record<string, PositionConstraint> | null;
+  limitsOverride: AircraftLimits | null;
+  cgLimitsOverride: CGLimits | null;
+  macOverride: MACData | null;
+  fuelArmOverride: number | null;
+  positionMaxWeightOverrides: Record<string, number> | null;
+  isSampleDataOverride: boolean | null;
+  dataProvenanceOverride: AircraftConfig['dataProvenance'] | null;
 }): AircraftConfig {
   const base = getAircraftConfig(input.type) ?? input.fallback;
-  const withOew = withOewOverride(base, input.oewOverrideKg);
-  return withMomentArmOverrides(withOew, {
+  const withLimits = withLimitsOverride(base, input.limitsOverride);
+  const withOew = withOewOverride(withLimits, input.oewOverrideKg);
+  const withCg = withCgLimitsOverride(withOew, input.cgLimitsOverride);
+  const withMac = withMacOverride(withCg, input.macOverride);
+  const withFuel = withFuelArmOverride(withMac, input.fuelArmOverride);
+  const withMaxW = withPositionMaxWeightOverrides(withFuel, input.positionMaxWeightOverrides);
+  const withArms = withMomentArmOverrides(withMaxW, {
     positionArms: input.positionArmOverrides,
     stationArms: input.stationArmOverrides,
+  });
+  const withConstraints = withPositionConstraintOverrides(withArms, input.positionConstraintOverrides);
+  return withProvenanceOverrides(withConstraints, {
+    isSampleData: input.isSampleDataOverride,
+    dataProvenance: input.dataProvenanceOverride,
   });
 }
 
@@ -505,6 +672,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
     oewOverrideKg: null,
     positionArmOverrides: null,
     stationArmOverrides: null,
+    positionConstraintOverrides: null,
+    limitsOverride: null,
+    cgLimitsOverride: null,
+    macOverride: null,
+    fuelArmOverride: null,
+    positionMaxWeightOverrides: null,
+    isSampleDataOverride: null,
+    dataProvenanceOverride: null,
     flight: null,
     route: DEFAULT_ROUTE,
     positions: initialPositions,
@@ -617,6 +792,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
               oewOverrideKg: null,
               positionArmOverrides: null,
               stationArmOverrides: null,
+              positionConstraintOverrides: null,
+              limitsOverride: null,
+              cgLimitsOverride: null,
+              macOverride: null,
+              fuelArmOverride: null,
+              positionMaxWeightOverrides: null,
+              isSampleDataOverride: null,
+              dataProvenanceOverride: null,
             })
           : prev.aircraftConfig;
 
@@ -673,6 +856,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
           oewOverrideKg: typeChanged ? null : prev.oewOverrideKg,
           positionArmOverrides: typeChanged ? null : prev.positionArmOverrides,
           stationArmOverrides: typeChanged ? null : prev.stationArmOverrides,
+          positionConstraintOverrides: typeChanged ? null : prev.positionConstraintOverrides,
+          limitsOverride: typeChanged ? null : prev.limitsOverride,
+          cgLimitsOverride: typeChanged ? null : prev.cgLimitsOverride,
+          macOverride: typeChanged ? null : prev.macOverride,
+          fuelArmOverride: typeChanged ? null : prev.fuelArmOverride,
+          positionMaxWeightOverrides: typeChanged ? null : prev.positionMaxWeightOverrides,
+          isSampleDataOverride: typeChanged ? null : prev.isSampleDataOverride,
+          dataProvenanceOverride: typeChanged ? null : prev.dataProvenanceOverride,
           physics,
         });
       } else {
@@ -703,6 +894,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: null,
         positionArmOverrides: null,
         stationArmOverrides: null,
+        positionConstraintOverrides: null,
+        limitsOverride: null,
+        cgLimitsOverride: null,
+        macOverride: null,
+        fuelArmOverride: null,
+        positionMaxWeightOverrides: null,
+        isSampleDataOverride: null,
+        dataProvenanceOverride: null,
       });
       const nextPositions = initializePositions(nextConfig);
       const leg = prev.legs[prev.activeLegIndex] ?? prev.legs[0];
@@ -719,6 +918,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: null,
         positionArmOverrides: null,
         stationArmOverrides: null,
+        positionConstraintOverrides: null,
+        limitsOverride: null,
+        cgLimitsOverride: null,
+        macOverride: null,
+        fuelArmOverride: null,
+        positionMaxWeightOverrides: null,
+        isSampleDataOverride: null,
+        dataProvenanceOverride: null,
         physics,
       });
     },
@@ -733,6 +940,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: null,
         positionArmOverrides: null,
         stationArmOverrides: null,
+        positionConstraintOverrides: null,
+        limitsOverride: null,
+        cgLimitsOverride: null,
+        macOverride: null,
+        fuelArmOverride: null,
+        positionMaxWeightOverrides: null,
+        isSampleDataOverride: null,
+        dataProvenanceOverride: null,
       });
       const nextPositions = initializePositions(nextConfig);
       const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
@@ -748,6 +963,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: null,
         positionArmOverrides: null,
         stationArmOverrides: null,
+        positionConstraintOverrides: null,
+        limitsOverride: null,
+        cgLimitsOverride: null,
+        macOverride: null,
+        fuelArmOverride: null,
+        positionMaxWeightOverrides: null,
+        isSampleDataOverride: null,
+        dataProvenanceOverride: null,
         physics,
       });
     },
@@ -762,6 +985,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: nextOverride,
         positionArmOverrides: state.positionArmOverrides,
         stationArmOverrides: state.stationArmOverrides,
+        positionConstraintOverrides: state.positionConstraintOverrides,
+        limitsOverride: state.limitsOverride,
+        cgLimitsOverride: state.cgLimitsOverride,
+        macOverride: state.macOverride,
+        fuelArmOverride: state.fuelArmOverride,
+        positionMaxWeightOverrides: state.positionMaxWeightOverrides,
+        isSampleDataOverride: state.isSampleDataOverride,
+        dataProvenanceOverride: state.dataProvenanceOverride,
       });
       const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
       set({
@@ -783,6 +1014,14 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         oewOverrideKg: state.oewOverrideKg,
         positionArmOverrides,
         stationArmOverrides,
+        positionConstraintOverrides: state.positionConstraintOverrides,
+        limitsOverride: state.limitsOverride,
+        cgLimitsOverride: state.cgLimitsOverride,
+        macOverride: state.macOverride,
+        fuelArmOverride: state.fuelArmOverride,
+        positionMaxWeightOverrides: state.positionMaxWeightOverrides,
+        isSampleDataOverride: state.isSampleDataOverride,
+        dataProvenanceOverride: state.dataProvenanceOverride,
       });
 
       // Update current loaded positions' arms so cargo moments immediately reflect the override.
@@ -796,6 +1035,89 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       set({
         positionArmOverrides,
         stationArmOverrides,
+        aircraftConfig: nextConfig,
+        positions: nextPositions,
+        physics: leg ? computePhysics(nextPositions, nextConfig, leg) : state.physics,
+      });
+    },
+
+    setPositionConstraintOverrides: (constraints) => {
+      ensureDraftForMutation('setPositionConstraintOverrides');
+      const state = get();
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: state.aircraftConfig.type,
+        fallback: state.aircraftConfig,
+        oewOverrideKg: state.oewOverrideKg,
+        positionArmOverrides: state.positionArmOverrides,
+        stationArmOverrides: state.stationArmOverrides,
+        positionConstraintOverrides: constraints,
+        limitsOverride: state.limitsOverride,
+        cgLimitsOverride: state.cgLimitsOverride,
+        macOverride: state.macOverride,
+        fuelArmOverride: state.fuelArmOverride,
+        positionMaxWeightOverrides: state.positionMaxWeightOverrides,
+        isSampleDataOverride: state.isSampleDataOverride,
+        dataProvenanceOverride: state.dataProvenanceOverride,
+      });
+      const byId = new Map(nextConfig.positions.map((p) => [p.id, p]));
+      const nextPositions = state.positions.map((p) => {
+        const nextDef = byId.get(p.id);
+        return nextDef ? { ...p, ...nextDef } : p;
+      });
+      const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
+      set({
+        positionConstraintOverrides: constraints,
+        aircraftConfig: nextConfig,
+        positions: nextPositions,
+        physics: leg ? computePhysics(nextPositions, nextConfig, leg) : state.physics,
+      });
+    },
+
+    setAircraftCoreOverrides: (overrides) => {
+      ensureDraftForMutation('setAircraftCoreOverrides');
+      const state = get();
+      const next = overrides ?? {};
+      const limitsOverride = overrides === null ? null : (next.limits ?? state.limitsOverride);
+      const cgLimitsOverride = overrides === null ? null : (next.cgLimits ?? state.cgLimitsOverride);
+      const macOverride = overrides === null ? null : (next.mac ?? state.macOverride);
+      const fuelArmOverride = overrides === null ? null : (typeof next.fuelArm === 'number' ? next.fuelArm : state.fuelArmOverride);
+      const positionMaxWeightOverrides =
+        overrides === null ? null : (next.positionMaxWeights ?? state.positionMaxWeightOverrides);
+      const isSampleDataOverride =
+        overrides === null ? null : (typeof next.isSampleData === 'boolean' ? next.isSampleData : state.isSampleDataOverride);
+      const dataProvenanceOverride =
+        overrides === null ? null : (next.dataProvenance ?? state.dataProvenanceOverride);
+
+      const nextConfig = buildEffectiveAircraftConfig({
+        type: state.aircraftConfig.type,
+        fallback: state.aircraftConfig,
+        oewOverrideKg: state.oewOverrideKg,
+        positionArmOverrides: state.positionArmOverrides,
+        stationArmOverrides: state.stationArmOverrides,
+        positionConstraintOverrides: state.positionConstraintOverrides,
+        limitsOverride,
+        cgLimitsOverride,
+        macOverride,
+        fuelArmOverride,
+        positionMaxWeightOverrides,
+        isSampleDataOverride,
+        dataProvenanceOverride,
+      });
+
+      const byId = new Map(nextConfig.positions.map((p) => [p.id, p]));
+      const nextPositions = state.positions.map((p) => {
+        const nextDef = byId.get(p.id);
+        return nextDef ? { ...p, ...nextDef } : p;
+      });
+      const leg = state.legs[state.activeLegIndex] ?? state.legs[0];
+      set({
+        limitsOverride,
+        cgLimitsOverride,
+        macOverride,
+        fuelArmOverride,
+        positionMaxWeightOverrides,
+        isSampleDataOverride,
+        dataProvenanceOverride,
         aircraftConfig: nextConfig,
         positions: nextPositions,
         physics: leg ? computePhysics(nextPositions, nextConfig, leg) : state.physics,
@@ -915,6 +1237,33 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
       set({ positions: newPositions, physics });
     },
+
+    updateCargoHeightIn: (cargoId, heightIn) => {
+      ensureDraftForMutation('updateCargoHeightIn');
+      const { positions, warehouse, aircraftConfig, legs, activeLegIndex } = get();
+      const nextHeight =
+        typeof heightIn === 'number' && Number.isFinite(heightIn) && heightIn > 0 ? heightIn : undefined;
+
+      // Check if in warehouse
+      const warehouseIdx = warehouse.findIndex((i) => i.id === cargoId);
+      if (warehouseIdx >= 0) {
+        const newWarehouse = [...warehouse];
+        newWarehouse[warehouseIdx] = { ...newWarehouse[warehouseIdx], heightIn: nextHeight };
+        set({ warehouse: newWarehouse });
+        return;
+      }
+
+      // Check if in position
+      const newPositions = positions.map((p) => {
+        if (p.content?.id === cargoId) {
+          return { ...p, content: { ...p.content, heightIn: nextHeight } };
+        }
+        return p;
+      });
+
+      const physics = computePhysics(newPositions, aircraftConfig, legs[activeLegIndex]);
+      set({ positions: newPositions, physics });
+    },
     
     // Position actions
     loadCargoAtPosition: (positionId, cargo) => {
@@ -995,7 +1344,8 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       // ULD/deck/bulk compatibility checks + weight
       const placement = checkCargoPlacement(drag.item, targetPos);
       if (!placement.ok) {
-        const canOverride = placement.code !== 'overweight';
+        // Structural + envelope limits should be hard blocks (no override).
+        const canOverride = placement.code !== 'overweight' && placement.code !== 'envelope' && placement.code !== 'bulk_only' && placement.code !== 'bulk_required';
         set({
           toast: {
             tone: 'error',
@@ -1549,6 +1899,18 @@ export function useSelectedContent() {
     }
     
     return null;
+  });
+}
+
+/**
+ * Selector for currently selected position (slot), even when empty.
+ */
+export function useSelectedPosition() {
+  return useLoadPlanStore((state) => {
+    const { selection, positions } = state;
+    if (!selection.id) return null;
+    if (selection.source !== 'slot') return null;
+    return positions.find((p) => p.id === selection.id) ?? null;
   });
 }
 

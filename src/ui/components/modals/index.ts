@@ -8,4 +8,5 @@ export * from './WarehouseSortModal';
 export * from './CaptainBriefModal';
 export * from './ProfileModal';
 export * from './ProofPackModal';
+export * from './AirframeInfoModal';
 

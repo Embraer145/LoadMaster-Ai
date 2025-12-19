@@ -93,6 +93,11 @@ export interface CargoItem {
   /** ULD type (e.g., PMC, LD3). Used for ops metadata and door compatibility checks. */
   uldType: UldType;
   /**
+   * Optional loaded height (inches). Needed to enforce per-position height envelopes.
+   * If omitted, placement checks may fall back to ULD spec height where available.
+   */
+  heightIn?: number;
+  /**
    * Door compatibility (heuristic for now).
    * In a certified version, this should be derived from actual door dimensions + ULD contour.
    */

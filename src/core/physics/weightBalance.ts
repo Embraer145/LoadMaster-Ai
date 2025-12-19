@@ -254,6 +254,9 @@ export function calculateFlightPhysics(
     lw > config.limits.MLW;
   const isUnbalanced = towCG < forwardLimit || towCG > aftLimit;
   
+  // Calculate lateral imbalance (main deck L-R difference)
+  const lateralImbalanceKg = calculateLateralImbalance(positions);
+  
   return {
     weight: totalWeight,
     towCG: parseFloat(towCG.toFixed(1)),
@@ -266,7 +269,36 @@ export function calculateFlightPhysics(
     isUnbalanced,
     forwardLimit: parseFloat(forwardLimit.toFixed(1)),
     aftLimit: parseFloat(aftLimit.toFixed(1)),
+    lateralImbalanceKg: parseFloat(lateralImbalanceKg.toFixed(1)),
   };
+}
+
+/**
+ * Calculate lateral imbalance (main deck left-right weight difference)
+ * 
+ * @param positions - Array of loaded positions
+ * @returns Absolute weight difference in kg between left and right sides
+ */
+export function calculateLateralImbalance(positions: LoadedPosition[]): number {
+  let leftWeight = 0;
+  let rightWeight = 0;
+  
+  for (const pos of positions) {
+    if (pos.deck !== 'MAIN') continue;
+    const weight = pos.content?.weight ?? 0;
+    
+    // A1 and positions ending in 'L' are left side
+    if (pos.id === 'A1' || pos.id.endsWith('L')) {
+      leftWeight += weight;
+    }
+    // A2 and positions ending in 'R' are right side
+    else if (pos.id === 'A2' || pos.id.endsWith('R')) {
+      rightWeight += weight;
+    }
+    // Centerline positions don't contribute to lateral imbalance
+  }
+  
+  return Math.abs(leftWeight - rightWeight);
 }
 
 /**

@@ -12,7 +12,50 @@ import type {
   PositionType,
   LowerHoldGroup,
   StationDefinition,
+  PositionConstraint,
 } from '@core/types';
+
+// Best-effort seed constraints for B747-400F (alphabetic) based on Aerostan B747-200F diagrams.
+// These are placeholders until operator/aircraft manuals are provided and entered.
+const SEED_CONSTRAINTS_B747_400F_ALPHA: Record<string, PositionConstraint> = (() => {
+  const out: Record<string, PositionConstraint> = {};
+  const set = (ids: string[], c: PositionConstraint) => {
+    for (const id of ids) out[id] = c;
+  };
+
+  // Main deck: best-effort height classes.
+  // - Forward/nose taper + under flight deck areas: treat as 96 in max.
+  // - Mid fuselage: treat as 118 in max.
+  // - Tail taper: treat as 96 in max.
+  const H96: PositionConstraint = { maxHeightIn: 96, source: 'aerostan_best_effort', notes: 'Best-effort seed (Aerostan 747-200F). Verify via 747-400F loading manual.' };
+  const H118: PositionConstraint = { maxHeightIn: 118, source: 'aerostan_best_effort', notes: 'Best-effort seed (Aerostan 747-200F). Verify via 747-400F loading manual.' };
+  const H64: PositionConstraint = { maxHeightIn: 64, source: 'aerostan_best_effort', notes: 'Best-effort belly container height class. Verify via 747-400F lower hold manual tables.' };
+
+  // Nose/forward rows (heuristic)
+  set(['A1', 'A2', 'B1'], H96);
+  set(['CL','CR','DL','DR','EL','ER','FL','FR'], H96);
+
+  // Mid section rows (heuristic): G..M
+  for (const row of ['G','H','J','K','L','M']) {
+    set([`${row}L`, `${row}R`], H118);
+  }
+
+  // Transitional C..F: still near forward curvature; seed 96 for now.
+  for (const row of ['C','D','E','F']) {
+    set([`${row}L`, `${row}R`], H96);
+  }
+
+  // Aft rows P..S + tail
+  for (const row of ['P','Q','R','S']) {
+    set([`${row}L`, `${row}R`], H96);
+  }
+  set(['T'], H96);
+
+  // Lower deck: 64 in class for container bays in this prototype
+  set(['11P','12P','21P','22P','23P','31P','32P','41P','42P','52','53'], H64);
+
+  return out;
+})();
 
 /**
  * Helper function to calculate arm based on position ID
@@ -43,9 +86,9 @@ function calculateArm(id: string, deck: DeckType): number {
  */
 const MAIN_DECK_POSITIONS: PositionDefinition[] = [
   // Nose Section
-  { id: 'A1', type: 'nose', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('A1', 'MAIN') },
-  { id: 'A2', type: 'nose', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('A2', 'MAIN') },
-  { id: 'B1', type: 'nose_side', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('B1', 'MAIN') },
+  { id: 'A1', type: 'nose', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('A1', 'MAIN'), constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['A1'] },
+  { id: 'A2', type: 'nose', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('A2', 'MAIN'), constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['A2'] },
+  { id: 'B1', type: 'nose_side', deck: 'MAIN', maxWeight: 5000, arm: calculateArm('B1', 'MAIN'), constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['B1'] },
   
   // Left Side (C-S)
   ...['C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S'].map(row => ({
@@ -54,6 +97,7 @@ const MAIN_DECK_POSITIONS: PositionDefinition[] = [
     deck: 'MAIN' as DeckType,
     maxWeight: 6800,
     arm: calculateArm(`${row}L`, 'MAIN'),
+    constraints: SEED_CONSTRAINTS_B747_400F_ALPHA[`${row}L`],
   })),
   
   // Right Side (C-S)
@@ -63,10 +107,11 @@ const MAIN_DECK_POSITIONS: PositionDefinition[] = [
     deck: 'MAIN' as DeckType,
     maxWeight: 6800,
     arm: calculateArm(`${row}R`, 'MAIN'),
+    constraints: SEED_CONSTRAINTS_B747_400F_ALPHA[`${row}R`],
   })),
   
   // Tail
-  { id: 'T', type: 'tail', deck: 'MAIN', maxWeight: 6800, arm: calculateArm('T', 'MAIN') },
+  { id: 'T', type: 'tail', deck: 'MAIN', maxWeight: 6800, arm: calculateArm('T', 'MAIN'), constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['T'] },
 ];
 
 /**
@@ -74,21 +119,21 @@ const MAIN_DECK_POSITIONS: PositionDefinition[] = [
  */
 const LOWER_DECK_POSITIONS: PositionDefinition[] = [
   // Forward Hold
-  { id: '11P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('11P', 'LOWER'), group: 'FWD' as LowerHoldGroup },
-  { id: '12P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('12P', 'LOWER'), group: 'FWD' as LowerHoldGroup },
-  { id: '21P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('21P', 'LOWER'), group: 'FWD' as LowerHoldGroup },
-  { id: '22P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('22P', 'LOWER'), group: 'FWD' as LowerHoldGroup },
-  { id: '23P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('23P', 'LOWER'), group: 'FWD' as LowerHoldGroup },
+  { id: '11P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('11P', 'LOWER'), group: 'FWD' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['11P'] },
+  { id: '12P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('12P', 'LOWER'), group: 'FWD' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['12P'] },
+  { id: '21P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('21P', 'LOWER'), group: 'FWD' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['21P'] },
+  { id: '22P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('22P', 'LOWER'), group: 'FWD' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['22P'] },
+  { id: '23P', type: 'lower_fwd', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('23P', 'LOWER'), group: 'FWD' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['23P'] },
   
   // Aft Hold
-  { id: '31P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('31P', 'LOWER'), group: 'AFT' as LowerHoldGroup },
-  { id: '32P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('32P', 'LOWER'), group: 'AFT' as LowerHoldGroup },
-  { id: '41P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('41P', 'LOWER'), group: 'AFT' as LowerHoldGroup },
-  { id: '42P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('42P', 'LOWER'), group: 'AFT' as LowerHoldGroup },
+  { id: '31P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('31P', 'LOWER'), group: 'AFT' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['31P'] },
+  { id: '32P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('32P', 'LOWER'), group: 'AFT' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['32P'] },
+  { id: '41P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('41P', 'LOWER'), group: 'AFT' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['41P'] },
+  { id: '42P', type: 'lower_aft', deck: 'LOWER', maxWeight: 4000, arm: calculateArm('42P', 'LOWER'), group: 'AFT' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['42P'] },
   
   // Bulk Cargo
-  { id: '52', type: 'bulk', deck: 'LOWER', maxWeight: 2000, arm: calculateArm('52', 'LOWER'), group: 'BULK' as LowerHoldGroup },
-  { id: '53', type: 'bulk', deck: 'LOWER', maxWeight: 2000, arm: calculateArm('53', 'LOWER'), group: 'BULK' as LowerHoldGroup },
+  { id: '52', type: 'bulk', deck: 'LOWER', maxWeight: 2000, arm: calculateArm('52', 'LOWER'), group: 'BULK' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['52'] },
+  { id: '53', type: 'bulk', deck: 'LOWER', maxWeight: 2000, arm: calculateArm('53', 'LOWER'), group: 'BULK' as LowerHoldGroup, constraints: SEED_CONSTRAINTS_B747_400F_ALPHA['53'] },
 ];
 
 /**

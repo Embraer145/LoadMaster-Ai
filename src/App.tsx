@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 // Store
-import { useLoadPlanStore, useSelectedContent } from '@store/loadPlanStore';
+import { useLoadPlanStore, useSelectedContent, useSelectedPosition } from '@store/loadPlanStore';
 import { useOptimizationSettings, useSettings } from '@core/settings';
 import { sortWarehouseItems, WAREHOUSE_SORT_LABEL, type WarehouseSortMode } from '@core/warehouse';
 import { useAuthStore } from '@core/auth';
@@ -69,12 +69,16 @@ export default function App() {
     setSelectedRegistration,
     setAircraftOewKg,
     setAircraftMomentArms,
+    setPositionConstraintOverrides,
+    setAircraftCoreOverrides,
     setOptimizationMode,
     setActiveLegIndex,
     updateLegFuel,
+    updateLegMisc,
     importManifest,
     clearAll,
     updateCargoWeight,
+    updateCargoHeightIn,
     selectWarehouseItem,
     selectPosition,
     startDrag,
@@ -92,6 +96,7 @@ export default function App() {
   } = useLoadPlanStore();
 
   const selectedContent = useSelectedContent();
+  const selectedPosition = useSelectedPosition();
   const optimizationSettings = useOptimizationSettings();
   const settings = useSettings();
   const cargoColorMode = settings.display.cargoColorMode;
@@ -158,6 +163,31 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [airframeLayout?.positionArms, airframeLayout?.stationArms]);
 
+  useEffect(() => {
+    // Per-tail per-slot constraints (geometry/contours)
+    setPositionConstraintOverrides(airframeLayout?.positionConstraints ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [airframeLayout?.positionConstraints]);
+
+  useEffect(() => {
+    // Apply full per-tail "airframe card" overrides (limits/CG/MAC/fuel/max weights/provenance/sample flag).
+    // Clear first to avoid carrying fields from a previous registration when the next record is partial.
+    setAircraftCoreOverrides(null);
+    if (!airframeLayout) return;
+    setAircraftCoreOverrides({
+      limits:
+        airframeLayout.limits ??
+        (typeof airframeLayout.oewKg === 'number' ? ({ OEW: airframeLayout.oewKg } as any) : undefined),
+      cgLimits: airframeLayout.cgLimits,
+      mac: airframeLayout.mac,
+      fuelArm: airframeLayout.fuelArm,
+      positionMaxWeights: airframeLayout.positionMaxWeights,
+      isSampleData: airframeLayout.isSampleData,
+      dataProvenance: airframeLayout.dataProvenance,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRegistration, airframeLayoutRev, dbReady]);
+
   const activeLeg = legs[activeLegIndex] ?? legs[0];
   const takeoffFuelKg = Math.max(0, (activeLeg?.fuel.blockFuelKg ?? 0) - (activeLeg?.fuel.taxiFuelKg ?? 0));
 
@@ -206,6 +236,10 @@ export default function App() {
   const [warehouseTouchStartY, setWarehouseTouchStartY] = useState<number | null>(null);
   const [warehouseDragPointer, setWarehouseDragPointer] = useState<{ x: number; y: number } | null>(null);
   const [warehouseDragOverId, setWarehouseDragOverId] = useState<string | null>(null);
+  const dragOverPosition = useMemo(() => {
+    if (!warehouseDragOverId) return null;
+    return positions.find((p) => p.id === warehouseDragOverId) ?? null;
+  }, [positions, warehouseDragOverId]);
   const [warehouseSortMode, setWarehouseSortMode] = useState<WarehouseSortMode>(
     () => settings.display.defaultWarehouseSort
   );
@@ -346,7 +380,7 @@ export default function App() {
 
   // Auto-switch the right panel based on where the user is working:
   // - warehouse click -> inspect cargo
-  // - aircraft plan click -> show envelope
+  // - aircraft plan click -> inspect slot (or its cargo)
   useEffect(() => {
     const isDraggingNow = !!drag.item;
 
@@ -374,9 +408,8 @@ export default function App() {
     if (selection.source === 'warehouse') {
       setRightTab('inspector');
     } else if (selection.source === 'slot') {
-      // Tap on a loaded slot -> inspect that cargo.
-      // Tap on an empty slot -> envelope (position context).
-      setRightTab(selectedContent ? 'inspector' : 'envelope');
+      // Slot selection should always open Inspector (cargo details if loaded, slot limits if empty).
+      setRightTab('inspector');
     }
   }, [selection.source, selection.id, drag.item, selectedContent?.id]);
 
@@ -579,16 +612,31 @@ export default function App() {
           onClose={() => setShowNotoc(false)}
         />
       )}
-      {showCaptainBrief && (
-        <CaptainBriefModal
-          flight={flight}
-          physics={physics}
-          takeoffFuelKg={takeoffFuelKg}
-          taxiFuelKg={activeLeg?.fuel.taxiFuelKg ?? 0}
-          tripBurnKg={activeLeg?.fuel.tripBurnKg ?? 0}
-          onClose={() => setShowCaptainBrief(false)}
-        />
-      )}
+      {showCaptainBrief && (() => {
+        const crewCount = Math.max(2, Math.min(4, activeLeg?.misc.crewCount || 2));
+        const crewWeightKg = settings.standardWeights.crewTotalKg > 0
+          ? (settings.standardWeights.crewTotalKg * crewCount) / 2
+          : (settings.standardWeights.standardRiderKg > 0 ? settings.standardWeights.standardRiderKg * crewCount : 0);
+        const serviceAdjustmentsKg = (activeLeg?.misc.itemsFwdKg ?? 0) + (activeLeg?.misc.itemsAftKg ?? 0) + (activeLeg?.misc.itemsOtherKg ?? 0);
+        
+        return (
+          <CaptainBriefModal
+            flight={flight}
+            aircraftConfig={aircraftConfig}
+            positions={positions}
+            physics={physics}
+            blockFuelKg={activeLeg?.fuel.blockFuelKg ?? 0}
+            taxiFuelKg={activeLeg?.fuel.taxiFuelKg ?? 0}
+            tripBurnKg={activeLeg?.fuel.tripBurnKg ?? 0}
+            ballastFuelKg={activeLeg?.fuel.ballastFuelKg ?? 0}
+            crewCount={crewCount}
+            crewWeightKg={crewWeightKg}
+            serviceAdjustmentsKg={serviceAdjustmentsKg}
+            operatorCode={settings.general.defaultOperator}
+            onClose={() => setShowCaptainBrief(false)}
+          />
+        );
+      })()}
       {showSettings && (
         <AdminSettings onClose={() => setShowSettings(false)} />
       )}
@@ -596,6 +644,9 @@ export default function App() {
         isOpen={showAirframeInfo}
         onClose={() => setShowAirframeInfo(false)}
         title={flight?.registration ? `Airframe Info • ${flight.registration}` : 'Airframe / Door Reference'}
+        registration={activeRegistration}
+        airframeLayout={airframeLayout}
+        aircraftConfig={aircraftConfig}
       />
       <ProofPackModal
         isOpen={showProofPack}
@@ -624,6 +675,7 @@ export default function App() {
         flight={flight}
         onFlightChange={setFlight}
         onRegistrationSelect={(reg) => setSelectedRegistration(reg)}
+        onAircraftTypeSelect={(t) => setAircraftType(t)}
         onImport={handleImport}
         onTestSetup={handleTestSetup}
         onOpenSettings={() => setShowSettings(true)}
@@ -789,7 +841,7 @@ export default function App() {
               {/* Content area */}
               <div className="flex-1 min-w-0 order-2">
                 {warehouseTab === 'payload' ? (
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700 min-h-[84px]">
+                  <div className="flex items-end gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-700 min-h-[84px]">
                     {warehouse.length === 0 ? (
                       <div className="w-full h-20 flex items-center justify-center border-2 border-dashed border-slate-800 rounded text-xs text-slate-600">
                         Ready for Import
@@ -809,7 +861,7 @@ export default function App() {
                   <div className="h-full overflow-hidden">
                     <div className="flex items-start gap-2 h-full">
                       {/* Fuel column (dense, table-like) */}
-                      <div className="flex-1 min-w-0 bg-slate-950/30 border border-slate-800 rounded-xl p-2 h-full">
+                      <div className="flex-1 min-w-0 max-w-[420px] bg-slate-950/30 border border-slate-800 rounded-xl p-2 h-full">
                         <div className="flex items-center justify-between">
                           <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Fuel</div>
                           {legs.length > 1 && (
@@ -864,6 +916,62 @@ export default function App() {
                             value={Math.max(0, activeLeg.fuel.blockFuelKg - activeLeg.fuel.taxiFuelKg - activeLeg.fuel.tripBurnKg)}
                           />
                         </div>
+                      </div>
+
+                      {/* Upper Deck column (crew/jumpseaters/riders) */}
+                      <div className="w-[320px] max-w-[40%] bg-slate-950/30 border border-slate-800 rounded-xl p-2 h-full">
+                        <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Upper Deck</div>
+                        {(() => {
+                          const crewCount = Math.max(2, Math.min(4, activeLeg.misc.crewCount || 2));
+                          const jump = Math.max(0, Math.min(1, activeLeg.misc.jumpseatCount || 0));
+                          const maxR = settings.standardWeights.maxAdditionalRiders ?? 6;
+                          const riders = Math.max(0, Math.min(maxR, activeLeg.misc.riderCount || 0));
+                          const riderKg = (settings.standardWeights.standardRiderKg || 0) * (jump + riders);
+                          const crewKg =
+                            settings.standardWeights.crewTotalKg > 0
+                              ? (settings.standardWeights.crewTotalKg * crewCount) / 2
+                              : (settings.standardWeights.standardRiderKg > 0 ? settings.standardWeights.standardRiderKg * crewCount : 0);
+                          const totalKg = crewKg + riderKg;
+
+                          return (
+                            <div className="mt-2 space-y-1">
+                              <CompactCountRow
+                                label="CREW"
+                                value={crewCount}
+                                min={2}
+                                max={4}
+                                onChange={(v) => updateLegMisc(activeLegIndex, { crewCount: v })}
+                              />
+                              <CompactCountRow
+                                label="JUMP"
+                                value={jump}
+                                min={0}
+                                max={1}
+                                onChange={(v) => updateLegMisc(activeLegIndex, { jumpseatCount: v })}
+                              />
+                              <CompactCountRow
+                                label="RIDERS"
+                                value={riders}
+                                min={0}
+                                max={maxR}
+                                onChange={(v) => updateLegMisc(activeLegIndex, { riderCount: v })}
+                              />
+
+                              <div className="h-px bg-slate-800 my-1" />
+
+                              <CompactComputedRow label="CREW KG" value={crewKg} />
+                              <CompactComputedRow label="RIDER KG" value={riderKg} />
+                              <CompactComputedRow label="TOTAL" value={totalKg} />
+
+                              {settings.standardWeights.crewTotalKg <= 0 && (
+                                <div className="text-[10px] text-amber-300/90 mt-1">
+                                  Using <span className="font-bold">Standard Weights → Rider</span> as fallback per-crew weight. Set{' '}
+                                  <span className="font-bold">Standard Weights → Crew Total</span> to use your operator’s crew standard.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* W&B column (dense) */}
@@ -1163,7 +1271,14 @@ export default function App() {
                 <CargoInspector
                   embedded
                   selectedContent={selectedContent}
+                  selectedPosition={selectedPosition}
+                  dragItem={drag.item}
+                  dragOverPosition={dragOverPosition}
                   onWeightChange={handleWeightChange}
+                  onHeightChange={(heightIn) => {
+                    if (!selectedContent) return;
+                    updateCargoHeightIn(selectedContent.id, heightIn);
+                  }}
                   onToggleMustFly={toggleMustFly}
                 />
               )}
@@ -1265,6 +1380,49 @@ function CompactComputedRow(props: { label: string; value: number }) {
       <div className="h-5 rounded border border-slate-900 bg-slate-950/20" />
       <div className="text-right font-mono text-[11px] text-slate-200 tabular-nums">
         {Math.round(props.value).toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function CompactCountRow(props: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  const clamp = (v: number) => Math.max(props.min, Math.min(props.max, v));
+  const set = (v: number) => props.onChange(clamp(Math.round(v)));
+  return (
+    <div className="grid grid-cols-[56px,1fr] items-center gap-2">
+      <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider truncate">{props.label}</div>
+      <div className="flex items-center justify-end gap-1 bg-slate-950/30 border border-slate-800 rounded px-2 py-1">
+        <button
+          type="button"
+          onClick={() => set(props.value - 1)}
+          className="w-6 h-6 rounded bg-slate-800/60 hover:bg-slate-700/70 border border-slate-700 text-slate-200 font-black"
+          aria-label={`${props.label} minus`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          value={props.value}
+          onChange={(e) => set(parseInt(e.target.value) || 0)}
+          className="w-[42px] h-6 bg-slate-950/50 border border-slate-800 rounded px-1 font-mono text-slate-100 text-[11px] text-right outline-none tabular-nums"
+          min={props.min}
+          max={props.max}
+          step={1}
+        />
+        <button
+          type="button"
+          onClick={() => set(props.value + 1)}
+          className="w-6 h-6 rounded bg-slate-800/60 hover:bg-slate-700/70 border border-slate-700 text-slate-200 font-black"
+          aria-label={`${props.label} plus`}
+        >
+          +
+        </button>
       </div>
     </div>
   );

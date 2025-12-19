@@ -6,6 +6,7 @@
  */
 
 export * from './aircraft';
+export * from './airframeLayout';
 export * from './cargo';
 export * from './loadplan';
 

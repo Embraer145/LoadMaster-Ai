@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   DoorOpen,
   RotateCcw,
-  Save,
+  Check,
   ChevronRight,
   Shield,
   Fuel,
@@ -98,7 +98,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
                 onClick={onClose}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold flex items-center gap-2"
               >
-                <Save size={14} /> Save & Close
+                <Check size={14} /> Done
               </button>
               <button 
                 onClick={onClose}
@@ -896,6 +896,7 @@ const AirframeLayoutsPanel: React.FC = () => {
   const [selectedReg, setSelectedReg] = useState<string>(() => useLoadPlanStore.getState().flight?.registration ?? '');
   const [layoutsByReg, setLayoutsByReg] = useState<Record<string, AirframeLayout | null>>({});
   const [fleet, setFleet] = useState<Array<{ registration: string; aircraftType: string }>>([]);
+  const [provenanceDraft, setProvenanceDraft] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState<{ state: 'idle' | 'saving' | 'saved' | 'error'; message?: string; at?: string }>({
     state: 'idle',
   });
@@ -975,6 +976,224 @@ const AirframeLayoutsPanel: React.FC = () => {
     }
   };
 
+  const revertToSaved = () => {
+    try {
+      if (!selectedReg) return;
+      if (!isDatabaseInitialized()) return;
+      const l = getAirframeLayoutByRegistration(selectedReg);
+      setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: l }));
+      setSaveStatus({ state: 'idle' });
+    } catch {
+      // ignore
+    }
+  };
+
+  const exportPdfWorksheet = () => {
+    try {
+      if (!selectedReg) return;
+      const nowIso = new Date().toISOString();
+      const type = selectedType;
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (!w) {
+        alert('Popup blocked. Allow popups to export PDF.');
+        return;
+      }
+
+      const esc = (s: string) =>
+        s
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+
+      const fmt = (n: unknown) =>
+        typeof n === 'number' && Number.isFinite(n) ? String(Math.round(n)) : '';
+      const fmtFixed = (n: unknown, d: number) =>
+        typeof n === 'number' && Number.isFinite(n) ? Number(n).toFixed(d) : '';
+
+      const limits = editable.limits ?? getAircraftConfig(type)?.limits;
+      const cg = editable.cgLimits ?? getAircraftConfig(type)?.cgLimits;
+      const mac = editable.mac ?? getAircraftConfig(type)?.mac;
+      const fuelArm = typeof editable.fuelArm === 'number' ? editable.fuelArm : getAircraftConfig(type)?.fuelArm;
+
+      const stations = (typeConfig?.stations ?? []).map((s) => ({
+        id: s.id,
+        label: (editable.stationLabels?.[s.id] ?? s.label) as string,
+        arm: typeof editable.stationArms?.[s.id] === 'number' ? editable.stationArms?.[s.id] : s.arm,
+      }));
+
+      const positions = (typeConfig?.positions ?? []).map((p) => ({
+        id: p.id,
+        deck: p.deck,
+        label: (editable.positionLabels?.[p.id] ?? p.id) as string,
+        arm: typeof editable.positionArms?.[p.id] === 'number' ? editable.positionArms?.[p.id] : p.arm,
+        maxW:
+          typeof editable.positionMaxWeights?.[p.id] === 'number' ? editable.positionMaxWeights?.[p.id] : p.maxWeight,
+      }));
+
+      const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Airframe Data Card Update • ${esc(selectedReg)}</title>
+  <style>
+    @page { size: auto; margin: 14mm; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; color: #0f172a; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+    .sub { margin-top: 4px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #334155; font-weight: 700; }
+    .grid { display: grid; gap: 12px; }
+    .card { border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .muted { color: #475569; }
+    .hdr { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 7px 8px; font-size: 11px; vertical-align: top; }
+    th { background: #f1f5f9; text-transform: uppercase; letter-spacing: 0.14em; font-size: 10px; color: #334155; text-align: left; }
+    .right { text-align: right; }
+    .box { height: 22px; border: 1px solid #94a3b8; border-radius: 6px; background: #ffffff; }
+    .smallbox { height: 20px; border: 1px solid #94a3b8; border-radius: 6px; background: #ffffff; }
+    .pagebreak { page-break-before: always; }
+    .sig { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .line { border-top: 1px solid #94a3b8; margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <h1>AIRFRAME DATA CARD UPDATE</h1>
+      <div class="sub">Existing vs New (mechanic pencil worksheet)</div>
+    </div>
+    <div class="mono muted" style="font-size: 11px; text-align:right;">
+      <div>Generated: ${esc(nowIso)}</div>
+      <div>LoadMaster Pro</div>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px;">
+    <div class="card">
+      <div class="sub" style="margin-top:0;">Registration</div>
+      <div class="mono" style="font-size: 14px; font-weight: 800; margin-top: 6px;">${esc(selectedReg)}</div>
+    </div>
+    <div class="card">
+      <div class="sub" style="margin-top:0;">Aircraft Type</div>
+      <div class="mono" style="font-size: 14px; font-weight: 800; margin-top: 6px;">${esc(type)}</div>
+    </div>
+    <div class="card">
+      <div class="sub" style="margin-top:0;">Revision</div>
+      <div class="mono" style="font-size: 14px; font-weight: 800; margin-top: 6px;">${esc(String(editable.revisionNumber ?? '—'))}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 14px;">
+    <table>
+      <thead>
+        <tr><th style="width: 240px;">Field</th><th>Existing</th><th>NEW</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="sub" style="letter-spacing:.12em;">Status</td><td class="mono">${esc(String(editable.status ?? '—'))}</td><td></td></tr>
+        <tr><td class="sub">Effective From (UTC)</td><td class="mono">${esc(String(editable.effectiveFromUtc ?? '—'))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">Weigh Report Date (UTC)</td><td class="mono">${esc(String(editable.weighReportDateUtc ?? '—'))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">Next Weigh Due (UTC)</td><td class="mono">${esc(String(editable.nextWeighDueUtc ?? '—'))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">OEW (kg)</td><td class="mono right">${esc(fmt(limits?.OEW ?? editable.oewKg))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">MZFW (kg)</td><td class="mono right">${esc(fmt(limits?.MZFW))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">MTOW (kg)</td><td class="mono right">${esc(fmt(limits?.MTOW))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">MLW (kg)</td><td class="mono right">${esc(fmt(limits?.MLW))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">CG FWD (%MAC)</td><td class="mono right">${esc(fmtFixed(cg?.forward, 1))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">CG AFT (%MAC)</td><td class="mono right">${esc(fmtFixed(cg?.aft, 1))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">MAC refChord (in)</td><td class="mono right">${esc(fmtFixed(mac?.refChord, 1))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">MAC leMAC (in)</td><td class="mono right">${esc(fmtFixed(mac?.leMAC, 0))}</td><td><div class="box"></div></td></tr>
+        <tr><td class="sub">Fuel Arm (in)</td><td class="mono right">${esc(fmtFixed(fuelArm, 0))}</td><td><div class="box"></div></td></tr>
+      </tbody>
+    </table>
+    <div class="sub" style="margin-top: 12px;">Change reason (NEW)</div>
+    <div class="box" style="height: 34px; margin-top: 6px;"></div>
+    <div class="sub" style="margin-top: 12px;">Provenance / references (NEW)</div>
+    <div class="box" style="height: 52px; margin-top: 6px;"></div>
+  </div>
+
+  <div class="pagebreak"></div>
+
+  <div class="sub" style="margin-top:0;">Stations (Existing vs NEW arms)</div>
+  <div class="card" style="margin-top: 10px;">
+    <table>
+      <thead>
+        <tr><th style="width: 220px;">Station</th><th>ID</th><th class="right" style="width: 140px;">Existing Arm</th><th class="right">NEW Arm</th></tr>
+      </thead>
+      <tbody>
+        ${stations
+          .map(
+            (s) => `
+          <tr>
+            <td>${esc(s.label)}</td>
+            <td class="mono muted">${esc(s.id)}</td>
+            <td class="mono right">${esc(fmtFixed(s.arm, 0))}</td>
+            <td><div class="smallbox"></div></td>
+          </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagebreak"></div>
+
+  <div class="sub" style="margin-top:0;">Cargo Positions (Existing vs NEW arm / max weight)</div>
+  <div class="card" style="margin-top: 10px;">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 70px;">Deck</th>
+          <th style="width: 90px;">Pos</th>
+          <th>Label</th>
+          <th class="right" style="width: 120px;">Arm</th>
+          <th class="right">NEW Arm</th>
+          <th class="right" style="width: 120px;">Max Wt</th>
+          <th class="right">NEW Max Wt</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${positions
+          .map(
+            (p) => `
+          <tr>
+            <td class="muted"><b>${esc(p.deck)}</b></td>
+            <td class="mono">${esc(p.id)}</td>
+            <td>${esc(p.label)}</td>
+            <td class="mono right">${esc(fmtFixed(p.arm, 0))}</td>
+            <td><div class="smallbox"></div></td>
+            <td class="mono right">${esc(fmt(p.maxW))}</td>
+            <td><div class="smallbox"></div></td>
+          </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sig">
+    <div>
+      <div class="sub">Mechanic</div>
+      <div class="line"></div>
+    </div>
+    <div>
+      <div class="sub">Tech / Data Entry</div>
+      <div class="line"></div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      w.print();
+    } catch {
+      alert('Export failed. Check console for details.');
+    }
+  };
+
   useEffect(() => {
     if (!selectedReg) return;
     ensureLoaded(selectedReg);
@@ -985,12 +1204,12 @@ const AirframeLayoutsPanel: React.FC = () => {
     const typeDefaultOewKg = getAircraftConfig(selectedType)?.limits.OEW;
     const defaultPositionArms: Record<string, number> = {};
     const defaultStationArms: Record<string, number> = {};
+    const defaultPositionMaxWeights: Record<string, number> = {};
     for (const p of typeConfig?.positions ?? []) defaultPositionArms[p.id] = p.arm;
+    for (const p of typeConfig?.positions ?? []) defaultPositionMaxWeights[p.id] = p.maxWeight;
     for (const s of typeConfig?.stations ?? []) defaultStationArms[s.id] = s.arm;
 
-    const preset =
-      current?.labelPreset ??
-      (selectedReg === 'CUSTOM' ? 'blank' : defaultPresetForType(selectedType));
+    const preset = current?.labelPreset ?? defaultPresetForType(selectedType);
     const defaults = buildDefaultLabels({
       preset,
       positions: typeConfig?.positions ?? [],
@@ -1004,9 +1223,18 @@ const AirframeLayoutsPanel: React.FC = () => {
       aircraftType: selectedType,
       version: 1,
       locked: true,
+      isSampleData: typeConfig?.isSampleData ?? true,
+      dataProvenance: typeConfig?.dataProvenance,
+      limits: typeConfig?.limits,
+      cgLimits: typeConfig?.cgLimits,
+      mac: typeConfig?.mac,
+      fuelArm: typeConfig?.fuelArm,
       oewKg: typeDefaultOewKg,
       positionArms: defaultPositionArms,
       stationArms: defaultStationArms,
+      positionMaxWeights: defaultPositionMaxWeights,
+      status: 'draft',
+      revisionNumber: 1,
       labelPreset: preset,
       positionLabels: defaults.positionLabels,
       stationLabels: defaults.stationLabels,
@@ -1026,19 +1254,83 @@ const AirframeLayoutsPanel: React.FC = () => {
       ...base,
       positionArms: { ...defaultPositionArms, ...(base.positionArms ?? {}) },
       stationArms: { ...defaultStationArms, ...(base.stationArms ?? {}) },
+      positionMaxWeights: { ...defaultPositionMaxWeights, ...(base.positionMaxWeights ?? {}) },
       positionLabels: mergedPositionLabels,
       stationLabels: mergedStationLabels,
       stationOverrides: { ...(base.stationOverrides ?? {}) },
     };
   }, [current, selectedReg, selectedType, typeConfig]);
 
-  const setOewKg = (oewKg: number | undefined) => {
+  // Keep a text draft for provenance editing so users can type invalid JSON temporarily.
+  useEffect(() => {
+    const next = editable.dataProvenance ? JSON.stringify(editable.dataProvenance, null, 2) : '';
+    setProvenanceDraft(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReg]);
+
+  const setLimit = (field: 'OEW' | 'MZFW' | 'MTOW' | 'MLW', value: number | undefined) => {
     setLayoutsByReg((prev) => {
       const cur = prev[selectedReg] ?? editable;
-      return {
-        ...prev,
-        [selectedReg]: { ...cur, oewKg, updatedAtUtc: new Date().toISOString() },
-      };
+      const base = cur.limits ?? getAircraftConfig(selectedType)?.limits ?? ({} as any);
+      const limits = { ...base, [field]: value };
+      // Keep `oewKg` in sync for backward compatibility.
+      const oewKg = field === 'OEW' ? value : cur.oewKg;
+      return { ...prev, [selectedReg]: { ...cur, limits, oewKg, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setCgLimit = (field: 'forward' | 'aft', value: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const base = cur.cgLimits ?? getAircraftConfig(selectedType)?.cgLimits ?? ({} as any);
+      const cgLimits = { ...base, [field]: value };
+      return { ...prev, [selectedReg]: { ...cur, cgLimits, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setMacField = (field: 'refChord' | 'leMAC', value: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const base = cur.mac ?? getAircraftConfig(selectedType)?.mac ?? ({} as any);
+      const mac = { ...base, [field]: value };
+      return { ...prev, [selectedReg]: { ...cur, mac, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setFuelArm = (value: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      return { ...prev, [selectedReg]: { ...cur, fuelArm: value, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setPositionMaxWeight = (positionId: string, value: number | undefined) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      const positionMaxWeights = { ...(cur.positionMaxWeights ?? {}) };
+      if (typeof value === 'number' && Number.isFinite(value)) positionMaxWeights[positionId] = value;
+      return { ...prev, [selectedReg]: { ...cur, positionMaxWeights, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const setRevisionMeta = (patch: Partial<Pick<AirframeLayout, 'status' | 'revisionNumber' | 'effectiveFromUtc' | 'weighReportDateUtc' | 'nextWeighDueUtc' | 'changeReason'>>) => {
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      return { ...prev, [selectedReg]: { ...cur, ...patch, updatedAtUtc: new Date().toISOString() } };
+    });
+  };
+
+  const commitProvenanceDraft = () => {
+    const raw = provenanceDraft;
+    setLayoutsByReg((prev) => {
+      const cur = prev[selectedReg] ?? editable;
+      if (!raw.trim()) return { ...prev, [selectedReg]: { ...cur, dataProvenance: undefined, updatedAtUtc: new Date().toISOString() } };
+      try {
+        const parsed = JSON.parse(raw);
+        return { ...prev, [selectedReg]: { ...cur, dataProvenance: parsed, updatedAtUtc: new Date().toISOString() } };
+      } catch {
+        return prev;
+      }
     });
   };
 
@@ -1060,10 +1352,33 @@ const AirframeLayoutsPanel: React.FC = () => {
     });
   };
 
-  const setLabelPreset = (labelPreset: AirframeLabelPreset) => {
+  // Removed: setLabelPreset (unused; applyLabelPreset handles preset changes)
+
+  const applyLabelPresetLocal = (preset: AirframeLabelPreset) => {
+    if (!selectedReg) return;
+    const ok = window.confirm(
+      `Apply label preset "${preset}" to ${selectedReg}?\n\nThis overwrites POSITION + STATION labels for this tail. (Arms/limits are not changed.)`
+    );
+    if (!ok) return;
+    const defaults = buildDefaultLabels({
+      preset,
+      positions: typeConfig?.positions ?? [],
+      stations: typeConfig?.stations ?? [],
+    });
     setLayoutsByReg((prev) => {
       const cur = prev[selectedReg] ?? editable;
-      return { ...prev, [selectedReg]: { ...cur, labelPreset, updatedAtUtc: new Date().toISOString() } };
+      return {
+        ...prev,
+        [selectedReg]: {
+          ...cur,
+          labelPreset: preset,
+          // Overwrite labels to match the chosen preset (user requested 1-button flow; preset selection is the “apply” step)
+          positionLabels: defaults.positionLabels,
+          stationLabels: defaults.stationLabels,
+          stationOverrides: defaults.stationOverrides,
+          updatedAtUtc: new Date().toISOString(),
+        },
+      };
     });
   };
 
@@ -1075,60 +1390,7 @@ const AirframeLayoutsPanel: React.FC = () => {
     setFleet((prev) => prev.map((f) => (f.registration === selectedReg ? { ...f, aircraftType } : f)));
   };
 
-  const applyLabelPreset = (preset: AirframeLabelPreset) => {
-    // Apply + persist (user request): make this behave like "Apply template now".
-    try {
-      if (!selectedReg) return;
-      const defaults = buildDefaultLabels({
-        preset,
-        positions: typeConfig?.positions ?? [],
-        stations: typeConfig?.stations ?? [],
-      });
-      const cur = layoutsByReg[selectedReg] ?? editable;
-      const next: Omit<AirframeLayout, 'updatedAtUtc'> = {
-        ...cur,
-        registration: selectedReg,
-        aircraftType: selectedType,
-        version: cur.version ?? 1,
-        locked: true,
-        labelPreset: preset,
-        positionLabels: defaults.positionLabels,
-        stationLabels: defaults.stationLabels,
-        stationOverrides: defaults.stationOverrides,
-      };
-
-      // Update local draft immediately (optimistic UI)
-      setLayoutsByReg((prev) => ({
-        ...prev,
-        [selectedReg]: { ...next, updatedAtUtc: new Date().toISOString() },
-      }));
-
-      // Persist (best-effort). This triggers lm:airframeLayoutUpdated so the diagram refreshes.
-      if (!isDatabaseInitialized()) {
-        console.warn('DB not initialized; preset applied locally only.');
-        return;
-      }
-      const saved = upsertAirframeLayout({
-        registration: selectedReg,
-        aircraftType: selectedType,
-        layout: {
-          version: next.version,
-          locked: next.locked,
-          oewKg: next.oewKg,
-          positionArms: next.positionArms,
-          stationArms: next.stationArms,
-          labelPreset: next.labelPreset,
-          positionLabels: next.positionLabels,
-          stationLabels: next.stationLabels,
-          stationOverrides: next.stationOverrides,
-          doors: next.doors,
-        },
-      });
-      setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: saved }));
-    } catch {
-      // ignore (prototype)
-    }
-  };
+  // NOTE: preset application is now local-only (dropdown change), and persisted via the single "Save" button.
 
   const setPositionLabel = (positionId: string, label: string | undefined) => {
     setLayoutsByReg((prev) => {
@@ -1188,12 +1450,26 @@ const AirframeLayoutsPanel: React.FC = () => {
           version: editable.version ?? 1,
           locked: true,
           oewKg: editable.oewKg,
+          limits: editable.limits,
+          cgLimits: editable.cgLimits,
+          mac: editable.mac,
+          fuelArm: editable.fuelArm,
+          positionMaxWeights: editable.positionMaxWeights,
+          isSampleData: editable.isSampleData,
+          dataProvenance: editable.dataProvenance,
+          status: editable.status,
+          revisionNumber: editable.revisionNumber,
+          effectiveFromUtc: editable.effectiveFromUtc,
+          weighReportDateUtc: editable.weighReportDateUtc,
+          nextWeighDueUtc: editable.nextWeighDueUtc,
+          changeReason: editable.changeReason,
           positionArms: editable.positionArms,
           stationArms: editable.stationArms,
           labelPreset: editable.labelPreset,
           positionLabels: editable.positionLabels,
           stationLabels: editable.stationLabels,
           stationOverrides: editable.stationOverrides,
+          positionConstraints: (editable as any).positionConstraints,
           doors: editable.doors,
         },
       });
@@ -1207,7 +1483,19 @@ const AirframeLayoutsPanel: React.FC = () => {
   };
 
   const resetToDefaults = () => {
+    if (!selectedReg) return;
+    const token = window.prompt(`Reset ${selectedReg} to defaults?\n\nType the registration to confirm:`);
+    if ((token ?? '').trim().toUpperCase() !== selectedReg.trim().toUpperCase()) return;
     const preset = defaultPresetForType(selectedType);
+    const typeDefaults = getAircraftConfig(selectedType);
+    const defaultPositionArms: Record<string, number> = {};
+    const defaultStationArms: Record<string, number> = {};
+    const defaultPositionMaxWeights: Record<string, number> = {};
+    for (const p of typeConfig?.positions ?? []) {
+      defaultPositionArms[p.id] = p.arm;
+      defaultPositionMaxWeights[p.id] = p.maxWeight;
+    }
+    for (const s of typeConfig?.stations ?? []) defaultStationArms[s.id] = s.arm;
     const defaults = buildDefaultLabels({
       preset,
       positions: typeConfig?.positions ?? [],
@@ -1220,10 +1508,25 @@ const AirframeLayoutsPanel: React.FC = () => {
         aircraftType: selectedType,
         version: 1,
         locked: true,
+        isSampleData: typeDefaults?.isSampleData ?? true,
+        dataProvenance: typeDefaults?.dataProvenance,
+        limits: typeDefaults?.limits,
+        cgLimits: typeDefaults?.cgLimits,
+        mac: typeDefaults?.mac,
+        fuelArm: typeDefaults?.fuelArm,
+        oewKg: typeDefaults?.limits.OEW,
+        positionArms: defaultPositionArms,
+        stationArms: defaultStationArms,
+        positionMaxWeights: defaultPositionMaxWeights,
+        status: 'draft',
+        revisionNumber: 1,
         labelPreset: preset,
         positionLabels: defaults.positionLabels,
         stationLabels: defaults.stationLabels,
         stationOverrides: defaults.stationOverrides,
+        positionConstraints: Object.fromEntries(
+          (typeConfig?.positions ?? []).map((p) => [p.id, (p as any).constraints ?? {}])
+        ),
         doors: defaultDoorsForType(selectedType).map((d) => ({
           kind: d.kind,
           enabled: d.enabled,
@@ -1244,7 +1547,7 @@ const AirframeLayoutsPanel: React.FC = () => {
       />
 
       <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Registration</div>
             <select
@@ -1260,48 +1563,72 @@ const AirframeLayoutsPanel: React.FC = () => {
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Labels preset</div>
-            <select
-              value={editable.labelPreset ?? defaultPresetForType(selectedType)}
-              onChange={(e) => setLabelPreset(e.target.value as AirframeLabelPreset)}
-              disabled={!selectedReg}
-              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
-              title="Label preset"
-            >
-              <option value="blank">Blank</option>
-              <option value="alphabetic">Alphabetic</option>
-              <option value="numeric">Numeric</option>
-              <option value="ups">UPS</option>
-            </select>
-            <select
-              value={selectedType}
-              onChange={(e) => setAircraftTypeForLayout(e.target.value)}
-              disabled={!selectedReg}
-              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
-              title="Aircraft type (controls slot set + diagram layout)"
-            >
-              {getAvailableAircraftTypes().map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex flex-col">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Labels preset</div>
+                <select
+                  value={editable.labelPreset ?? defaultPresetForType(selectedType)}
+                  onChange={(e) => applyLabelPresetLocal(e.target.value as AirframeLabelPreset)}
+                  disabled={!selectedReg}
+                  className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
+                  title="Label preset"
+                >
+                  <option value="blank">Blank</option>
+                  <option value="alphabetic">Alphabetic</option>
+                  <option value="numeric">Numeric</option>
+                  <option value="ups">UPS</option>
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Aircraft type</div>
+                <select
+                  value={selectedType}
+                  onChange={(e) => setAircraftTypeForLayout(e.target.value)}
+                  disabled={!selectedReg}
+                  className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
+                  title="Aircraft type (controls slot set + diagram layout)"
+                >
+                  {getAvailableAircraftTypes().map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="relative flex items-center gap-2">
             <button
               type="button"
-              onClick={() => applyLabelPreset((editable.labelPreset ?? defaultPresetForType(selectedType)) as AirframeLabelPreset)}
+              onClick={exportPdfWorksheet}
               disabled={!selectedReg}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-slate-700 disabled:opacity-50"
-              title="Overwrite all labels with the selected preset defaults"
+              className="px-3 py-2 bg-slate-800 text-slate-200 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-700 hover:bg-slate-700 disabled:opacity-50"
+              title="Open a printable worksheet (Existing vs NEW) and export to PDF"
             >
-              Apply preset
+              Export PDF
             </button>
-          </div>
-          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={revertToSaved}
+              disabled={!selectedReg}
+              className="px-3 py-2 bg-slate-800 text-slate-200 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-700 hover:bg-slate-700 disabled:opacity-50"
+              title="Discard unsaved changes and reload last saved DB record for this tail"
+            >
+              Revert
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!selectedReg}
+              className="px-4 py-2 bg-white text-slate-900 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
+            >
+              Save
+            </button>
             {saveStatus.state !== 'idle' && (
               <div
                 className={[
-                  'px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap',
+                  'absolute right-0 -top-9 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap',
                   saveStatus.state === 'saved'
                     ? 'bg-emerald-900/20 border-emerald-900/50 text-emerald-300'
                     : saveStatus.state === 'saving'
@@ -1317,14 +1644,6 @@ const AirframeLayoutsPanel: React.FC = () => {
                     : saveStatus.message ?? 'Error'}
               </div>
             )}
-            <button
-              type="button"
-              onClick={save}
-              disabled={!selectedReg}
-              className="px-4 py-2 bg-white text-slate-900 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
-            >
-              Save Layout
-            </button>
           </div>
         </div>
         <div className="mt-2 text-[11px] text-slate-500">
@@ -1334,27 +1653,211 @@ const AirframeLayoutsPanel: React.FC = () => {
       </div>
 
       <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
-        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Weights (per registration)</div>
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-          <div>
-            <div className="text-xs text-slate-300 font-bold">OEW (kg)</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Maintenance updates can change this over time; this value overrides the aircraft type default for this tail.
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Aircraft limits (per registration)</div>
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="text-[11px] text-slate-500">
+            These drive dispatch legality. Update them per annual weigh report / manuals for this tail.
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(['OEW', 'MZFW', 'MTOW', 'MLW'] as const).map((k) => (
+              <div key={k} className="flex flex-col">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{k} (kg)</div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={typeof editable.limits?.[k] === 'number' ? (editable.limits as any)[k] : (k === 'OEW' && typeof editable.oewKg === 'number' ? editable.oewKg : '')}
+                  placeholder={String((getAircraftConfig(selectedType)?.limits as any)?.[k] ?? '')}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setLimit(k, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">CG / MAC / Fuel (per registration)</div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">CG FWD (%MAC)</div>
+              <input
+                type="number"
+                value={typeof editable.cgLimits?.forward === 'number' ? editable.cgLimits.forward : ''}
+                placeholder={String(getAircraftConfig(selectedType)?.cgLimits?.forward ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? undefined : Number(raw);
+                  setCgLimit('forward', Number.isFinite(n as number) ? (n as number) : undefined);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+              />
+            </div>
+            <div className="flex flex-col">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">CG AFT (%MAC)</div>
+              <input
+                type="number"
+                value={typeof editable.cgLimits?.aft === 'number' ? editable.cgLimits.aft : ''}
+                placeholder={String(getAircraftConfig(selectedType)?.cgLimits?.aft ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? undefined : Number(raw);
+                  setCgLimit('aft', Number.isFinite(n as number) ? (n as number) : undefined);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+              />
             </div>
           </div>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={typeof editable.oewKg === 'number' ? editable.oewKg : ''}
-            placeholder={String(getAircraftConfig(selectedType)?.limits.OEW ?? '')}
-            onChange={(e) => {
-              const raw = e.target.value;
-              const n = raw === '' ? undefined : Number(raw);
-              setOewKg(Number.isFinite(n as number) ? (n as number) : undefined);
-            }}
-            className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
-          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">MAC refChord (in)</div>
+              <input
+                type="number"
+                value={typeof editable.mac?.refChord === 'number' ? editable.mac.refChord : ''}
+                placeholder={String(getAircraftConfig(selectedType)?.mac?.refChord ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? undefined : Number(raw);
+                  setMacField('refChord', Number.isFinite(n as number) ? (n as number) : undefined);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+              />
+            </div>
+            <div className="flex flex-col">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">MAC leMAC (in)</div>
+              <input
+                type="number"
+                value={typeof editable.mac?.leMAC === 'number' ? editable.mac.leMAC : ''}
+                placeholder={String(getAircraftConfig(selectedType)?.mac?.leMAC ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? undefined : Number(raw);
+                  setMacField('leMAC', Number.isFinite(n as number) ? (n as number) : undefined);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 items-end">
+            <div className="flex flex-col">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Fuel Arm (in)</div>
+              <input
+                type="number"
+                value={typeof editable.fuelArm === 'number' ? editable.fuelArm : ''}
+                placeholder={String(getAircraftConfig(selectedType)?.fuelArm ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === '' ? undefined : Number(raw);
+                  setFuelArm(Number.isFinite(n as number) ? (n as number) : undefined);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+              />
+            </div>
+            <div className="flex items-center justify-between border border-slate-800 rounded-lg px-3 py-2 bg-slate-950/30">
+              <div>
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Sample data</div>
+                <div className="text-[11px] text-slate-500">Turn off when you enter real manual data.</div>
+              </div>
+              <Toggle
+                checked={editable.isSampleData ?? true}
+                onChange={(v) => setLayoutsByReg((prev) => {
+                  const cur = prev[selectedReg] ?? editable;
+                  return { ...prev, [selectedReg]: { ...cur, isSampleData: v, updatedAtUtc: new Date().toISOString() } };
+                })}
+              />
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Reweigh / revision metadata</div>
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+          <div className="flex flex-col">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Status</div>
+            <select
+              value={editable.status ?? 'draft'}
+              onChange={(e) => setRevisionMeta({ status: e.target.value as any })}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
+            >
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="retired">Retired</option>
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Revision #</div>
+            <input
+              type="number"
+              value={typeof editable.revisionNumber === 'number' ? editable.revisionNumber : ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const n = raw === '' ? undefined : Number(raw);
+                setRevisionMeta({ revisionNumber: Number.isFinite(n as number) ? (n as number) : undefined });
+              }}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+            />
+          </div>
+          <div className="flex flex-col">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Effective from (UTC ISO)</div>
+            <input
+              type="text"
+              value={editable.effectiveFromUtc ?? ''}
+              placeholder="2026-01-15T00:00:00Z"
+              onChange={(e) => setRevisionMeta({ effectiveFromUtc: e.target.value || undefined })}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs text-white w-full font-mono"
+            />
+          </div>
+          <div className="flex flex-col">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Weigh report date (UTC ISO)</div>
+            <input
+              type="text"
+              value={editable.weighReportDateUtc ?? ''}
+              placeholder="2025-12-01T00:00:00Z"
+              onChange={(e) => setRevisionMeta({ weighReportDateUtc: e.target.value || undefined })}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs text-white w-full font-mono"
+            />
+          </div>
+          <div className="flex flex-col">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Next reweigh due (UTC ISO)</div>
+            <input
+              type="text"
+              value={editable.nextWeighDueUtc ?? ''}
+              placeholder="2026-12-01T00:00:00Z"
+              onChange={(e) => setRevisionMeta({ nextWeighDueUtc: e.target.value || undefined })}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs text-white w-full font-mono"
+            />
+          </div>
+          <div className="flex flex-col md:col-span-2">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Change reason</div>
+            <input
+              type="text"
+              value={editable.changeReason ?? ''}
+              placeholder="Annual weigh report update"
+              onChange={(e) => setRevisionMeta({ changeReason: e.target.value || undefined })}
+              className="mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white w-full"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Data provenance (JSON)</div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          Store manual/weighing report references here for audit traceability. Must be valid JSON to save.
+        </div>
+        <textarea
+          value={provenanceDraft}
+          onChange={(e) => setProvenanceDraft(e.target.value)}
+          onBlur={commitProvenanceDraft}
+          placeholder={'{\n  "aircraftIdentity": "B747-400F ...",\n  "documents": [\n    { "id": "WB_MANUAL", "title": "W&B Manual", "revision": "Rev X", "reference": "Table 3-1" }\n  ],\n  "notes": "..." \n}'}
+          className="mt-2 w-full min-h-[140px] bg-slate-900 border border-slate-800 rounded-lg p-3 text-[12px] text-slate-200 font-mono"
+        />
       </div>
 
       <div className="mt-3 p-3 rounded-lg border border-slate-800 bg-slate-950/30">
@@ -1424,19 +1927,46 @@ const AirframeLayoutsPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Cargo positions */}
+        {/* Cargo positions + constraints (merged) */}
         <div className="mt-4">
-          <div className="text-xs text-slate-300 font-bold">Cargo Positions</div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs text-slate-300 font-bold">Cargo Positions</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Label + arm + per-slot max height (envelope). Used for plan-view sizing and placement checks.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const ok = window.confirm(
+                  `Seed max heights from the current aircraft type into ${selectedReg}?\n\nThis overwrites the per-tail max-height values for ALL positions.`
+                );
+                if (!ok) return;
+                const seed = Object.fromEntries((typeConfig?.positions ?? []).map((p) => [p.id, (p as any).constraints ?? {}]));
+                setLayoutsByReg((prev) => {
+                  const cur = prev[selectedReg] ?? editable;
+                  return { ...prev, [selectedReg]: { ...cur, positionConstraints: seed, updatedAtUtc: new Date().toISOString() } };
+                });
+              }}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700"
+              title="Overwrite tail max heights with template seed"
+            >
+              Seed max heights
+            </button>
+          </div>
           <div className="mt-2 max-h-[260px] overflow-y-auto border border-slate-800 rounded-lg">
-            <div className="grid grid-cols-[70px,90px,150px,1fr,120px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
+            <div className="grid grid-cols-[70px,90px,150px,1fr,120px,140px,130px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
               <div>Deck</div>
               <div>Pos</div>
               <div>Display label</div>
               <div>Type</div>
               <div className="text-right">Arm (in)</div>
+              <div className="text-right">Max Wt (kg)</div>
+              <div className="text-right">Max Height (in)</div>
             </div>
             {(typeConfig?.positions ?? []).map((p) => (
-              <div key={p.id} className="grid grid-cols-[70px,90px,150px,1fr,120px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0">
+              <div key={p.id} className="grid grid-cols-[70px,90px,150px,1fr,120px,140px,130px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0">
                 <div className="text-[11px] text-slate-400 font-bold">{p.deck}</div>
                 <div className="text-sm font-mono text-slate-200">{p.id}</div>
                 <input
@@ -1454,6 +1984,36 @@ const AirframeLayoutsPanel: React.FC = () => {
                     const raw = e.target.value;
                     const n = raw === '' ? undefined : Number(raw);
                     setPositionArm(p.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+                <input
+                  type="number"
+                  value={typeof editable.positionMaxWeights?.[p.id] === 'number' ? editable.positionMaxWeights![p.id] : ''}
+                  placeholder={String(p.maxWeight)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setPositionMaxWeight(p.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+                <input
+                  type="number"
+                  value={typeof (editable as any).positionConstraints?.[p.id]?.maxHeightIn === 'number' ? (editable as any).positionConstraints[p.id].maxHeightIn : ''}
+                  placeholder={(p as any).constraints?.maxHeightIn ? String((p as any).constraints.maxHeightIn) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setLayoutsByReg((prev) => {
+                      const cur = prev[selectedReg] ?? editable;
+                      const positionConstraints = { ...((cur as any).positionConstraints ?? {}) };
+                      positionConstraints[p.id] = {
+                        ...(positionConstraints[p.id] ?? {}),
+                        maxHeightIn: Number.isFinite(n as number) ? (n as number) : undefined,
+                      };
+                      return { ...prev, [selectedReg]: { ...cur, positionConstraints, updatedAtUtc: new Date().toISOString() } };
+                    });
                   }}
                   className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
                 />

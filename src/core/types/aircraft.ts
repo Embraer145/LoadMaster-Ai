@@ -79,6 +79,32 @@ export interface PositionDefinition {
   arm: number;
   /** For lower deck positions, which compartment group */
   group?: LowerHoldGroup;
+  /**
+   * Optional per-position geometric/contour constraints.
+   * Seeded from templates; may be overridden per registration via Airframe Layouts.
+   */
+  constraints?: PositionConstraint;
+}
+
+/**
+ * Per-position geometric/contour limits (best-effort until backed by manuals).
+ * Units: inches.
+ */
+export interface PositionConstraint {
+  /** Max allowable loaded height at this position (in). */
+  maxHeightIn?: number;
+  /** Optional max width (in) */
+  maxWidthIn?: number;
+  /** Optional max length (in) */
+  maxLengthIn?: number;
+  /** Optional allowlist of ULD/contour codes (string-backed for future catalog) */
+  allowedUldCodes?: string[];
+  /** Optional allowlist of contour codes (string-backed) */
+  allowedContourCodes?: string[];
+  /** Provenance/notes (e.g., “Aerostan best-effort”, manual table ref) */
+  notes?: string;
+  /** Source marker for auditing seed data */
+  source?: 'aerostan_best_effort' | 'manual' | 'user';
 }
 
 /**

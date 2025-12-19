@@ -31,7 +31,7 @@ function makeTestUser(): UserProfile {
     id: 'user_test',
     username: DEFAULT_TEST_USERNAME,
     displayName: 'Test User',
-    role: 'test',
+    role: 'super_admin',
     operatorCode: 'WGA',
     createdAt: new Date().toISOString(),
   };

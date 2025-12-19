@@ -44,6 +44,25 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
     return `${item.uldType} • ${deck} • Doors ${doorShort}${flags}`;
   }, [item.preferredDeck, item.uldType, item.compatibleDoors, item.handlingFlags]);
 
+  // Warehouse card height: keep labels readable but hint at real-world build height.
+  // We clamp to a small range to avoid layout chaos.
+  const cardHeightPx = useMemo(() => {
+    const h = typeof item.heightIn === 'number' && Number.isFinite(item.heightIn) ? item.heightIn : null;
+    // Baselines chosen to keep internal labels from getting cramped.
+    if (item.uldType === 'PMC' || item.uldType === 'P6P') {
+      if (h == null) return 168;
+      if (h <= 96) return 160;
+      if (h <= 118) return 176;
+      return 190;
+    }
+    if (item.uldType === 'LD1' || item.uldType === 'LD3') {
+      if (h == null) return 156;
+      if (h <= 64) return 150;
+      return 164;
+    }
+    return 160;
+  }, [item.heightIn, item.uldType]);
+
   const handleCopyId = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -70,7 +89,7 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
           : 'border-slate-700 hover:border-slate-500'
         }
       `}
-      style={{ touchAction: 'none' }} // Better touch handling for iPad
+      style={{ touchAction: 'none', height: cardHeightPx }} // Better touch handling for iPad
     >
       {/* MUST GO marker (set in Inspector) */}
       {item.mustFly && (
@@ -96,7 +115,7 @@ export const DraggableCargo: React.FC<DraggableCargoProps> = ({
       </div>
 
       {/* Main content area */}
-      <div className="pl-7 pr-2 py-2">
+      <div className="absolute inset-0 pl-7 pr-2 pt-2 pb-5 flex flex-col justify-end">
         {/* Destination */}
         <div className="flex items-center justify-center gap-2">
           <span className="text-lg leading-none">{item.dest.flag}</span>
