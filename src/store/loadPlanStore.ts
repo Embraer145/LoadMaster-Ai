@@ -34,6 +34,7 @@ import { WGA_FLEET } from '@data/operators';
 import { useSettingsStore } from '@core/settings';
 import { checkCargoPlacement } from '@core/uld';
 import { logAudit } from '@/db/repositories/auditRepository';
+import { getAirframeLayoutByRegistration } from '@/db/repositories/airframeLayoutRepository';
 
 function safeAudit(input: Parameters<typeof logAudit>[0]) {
   try {
@@ -785,21 +786,44 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         const legs = prev.legs.length === nextLegCount ? prev.legs : createDefaultLegs(nextLegCount);
         const activeLegIndex = Math.min(prev.activeLegIndex, legs.length - 1);
 
+        // Load airframe layout from database for this registration
+        let airframeLayout: ReturnType<typeof getAirframeLayoutByRegistration> = null;
+        try {
+          if (flight.registration) {
+            airframeLayout = getAirframeLayoutByRegistration(flight.registration);
+          }
+        } catch (err) {
+          console.warn(`Failed to load airframe layout for ${flight.registration}:`, err);
+        }
+
+        // Extract overrides from airframe layout
+        const oewOverrideKg = airframeLayout?.oewKg ?? null;
+        const positionArmOverrides = airframeLayout?.positionArms ?? null;
+        const stationArmOverrides = airframeLayout?.stationArms ?? null;
+        const positionConstraintOverrides = airframeLayout?.positionConstraints ?? null;
+        const limitsOverride = airframeLayout?.limits ?? null;
+        const cgLimitsOverride = airframeLayout?.cgLimits ?? null;
+        const macOverride = airframeLayout?.mac ?? null;
+        const fuelArmOverride = airframeLayout?.fuelArm ?? null;
+        const positionMaxWeightOverrides = airframeLayout?.positionMaxWeights ?? null;
+        const isSampleDataOverride = airframeLayout?.isSampleData ?? null;
+        const dataProvenanceOverride = airframeLayout?.dataProvenance ?? null;
+
         const nextConfig = typeChanged
           ? buildEffectiveAircraftConfig({
               type: nextType,
               fallback: prev.aircraftConfig,
-              oewOverrideKg: null,
-              positionArmOverrides: null,
-              stationArmOverrides: null,
-              positionConstraintOverrides: null,
-              limitsOverride: null,
-              cgLimitsOverride: null,
-              macOverride: null,
-              fuelArmOverride: null,
-              positionMaxWeightOverrides: null,
-              isSampleDataOverride: null,
-              dataProvenanceOverride: null,
+              oewOverrideKg,
+              positionArmOverrides,
+              stationArmOverrides,
+              positionConstraintOverrides,
+              limitsOverride,
+              cgLimitsOverride,
+              macOverride,
+              fuelArmOverride,
+              positionMaxWeightOverrides,
+              isSampleDataOverride,
+              dataProvenanceOverride,
             })
           : prev.aircraftConfig;
 
@@ -853,17 +877,17 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
           drag: typeChanged ? { item: null, source: null } : prev.drag,
           toast: typeChanged ? null : prev.toast,
           pendingDropOverride: typeChanged ? null : prev.pendingDropOverride,
-          oewOverrideKg: typeChanged ? null : prev.oewOverrideKg,
-          positionArmOverrides: typeChanged ? null : prev.positionArmOverrides,
-          stationArmOverrides: typeChanged ? null : prev.stationArmOverrides,
-          positionConstraintOverrides: typeChanged ? null : prev.positionConstraintOverrides,
-          limitsOverride: typeChanged ? null : prev.limitsOverride,
-          cgLimitsOverride: typeChanged ? null : prev.cgLimitsOverride,
-          macOverride: typeChanged ? null : prev.macOverride,
-          fuelArmOverride: typeChanged ? null : prev.fuelArmOverride,
-          positionMaxWeightOverrides: typeChanged ? null : prev.positionMaxWeightOverrides,
-          isSampleDataOverride: typeChanged ? null : prev.isSampleDataOverride,
-          dataProvenanceOverride: typeChanged ? null : prev.dataProvenanceOverride,
+          oewOverrideKg,
+          positionArmOverrides,
+          stationArmOverrides,
+          positionConstraintOverrides,
+          limitsOverride,
+          cgLimitsOverride,
+          macOverride,
+          fuelArmOverride,
+          positionMaxWeightOverrides,
+          isSampleDataOverride,
+          dataProvenanceOverride,
           physics,
         });
       } else {
@@ -883,25 +907,91 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       const nextType = mappedType ?? prev.aircraftConfig.type;
       const typeChanged = nextType !== prev.aircraftConfig.type;
 
+      // Load airframe layout from database for this registration
+      let airframeLayout: ReturnType<typeof getAirframeLayoutByRegistration> = null;
+      try {
+        if (reg) {
+          airframeLayout = getAirframeLayoutByRegistration(reg);
+        }
+      } catch (err) {
+        console.warn(`Failed to load airframe layout for ${reg}:`, err);
+      }
+
+      // Extract overrides from airframe layout
+      const oewOverrideKg = airframeLayout?.oewKg ?? null;
+      const positionArmOverrides = airframeLayout?.positionArms ?? null;
+      const stationArmOverrides = airframeLayout?.stationArms ?? null;
+      const positionConstraintOverrides = airframeLayout?.positionConstraints ?? null;
+      const limitsOverride = airframeLayout?.limits ?? null;
+      const cgLimitsOverride = airframeLayout?.cgLimits ?? null;
+      const macOverride = airframeLayout?.mac ?? null;
+      const fuelArmOverride = airframeLayout?.fuelArm ?? null;
+      const positionMaxWeightOverrides = airframeLayout?.positionMaxWeights ?? null;
+      const isSampleDataOverride = airframeLayout?.isSampleData ?? null;
+      const dataProvenanceOverride = airframeLayout?.dataProvenance ?? null;
+
       if (!typeChanged) {
-        set({ selectedRegistration: reg });
+        // Type didn't change, but still apply overrides from airframe layout
+        const nextConfig = buildEffectiveAircraftConfig({
+          type: nextType,
+          fallback: prev.aircraftConfig,
+          oewOverrideKg,
+          positionArmOverrides,
+          stationArmOverrides,
+          positionConstraintOverrides,
+          limitsOverride,
+          cgLimitsOverride,
+          macOverride,
+          fuelArmOverride,
+          positionMaxWeightOverrides,
+          isSampleDataOverride,
+          dataProvenanceOverride,
+        });
+
+        // Update existing positions with new arms
+        const armByPosId = new Map(nextConfig.positions.map((p) => [p.id, p.arm]));
+        const nextPositions = prev.positions.map((p) => ({
+          ...p,
+          arm: armByPosId.get(p.id) ?? p.arm,
+        }));
+
+        const leg = prev.legs[prev.activeLegIndex] ?? prev.legs[0];
+        const physics = leg ? computePhysics(nextPositions, nextConfig, leg) : prev.physics;
+
+        set({ 
+          selectedRegistration: reg,
+          aircraftConfig: nextConfig,
+          positions: nextPositions,
+          oewOverrideKg,
+          positionArmOverrides,
+          stationArmOverrides,
+          positionConstraintOverrides,
+          limitsOverride,
+          cgLimitsOverride,
+          macOverride,
+          fuelArmOverride,
+          positionMaxWeightOverrides,
+          isSampleDataOverride,
+          dataProvenanceOverride,
+          physics,
+        });
         return;
       }
 
       const nextConfig = buildEffectiveAircraftConfig({
         type: nextType,
         fallback: prev.aircraftConfig,
-        oewOverrideKg: null,
-        positionArmOverrides: null,
-        stationArmOverrides: null,
-        positionConstraintOverrides: null,
-        limitsOverride: null,
-        cgLimitsOverride: null,
-        macOverride: null,
-        fuelArmOverride: null,
-        positionMaxWeightOverrides: null,
-        isSampleDataOverride: null,
-        dataProvenanceOverride: null,
+        oewOverrideKg,
+        positionArmOverrides,
+        stationArmOverrides,
+        positionConstraintOverrides,
+        limitsOverride,
+        cgLimitsOverride,
+        macOverride,
+        fuelArmOverride,
+        positionMaxWeightOverrides,
+        isSampleDataOverride,
+        dataProvenanceOverride,
       });
       const nextPositions = initializePositions(nextConfig);
       const leg = prev.legs[prev.activeLegIndex] ?? prev.legs[0];
@@ -915,17 +1005,17 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         drag: { item: null, source: null },
         toast: null,
         pendingDropOverride: null,
-        oewOverrideKg: null,
-        positionArmOverrides: null,
-        stationArmOverrides: null,
-        positionConstraintOverrides: null,
-        limitsOverride: null,
-        cgLimitsOverride: null,
-        macOverride: null,
-        fuelArmOverride: null,
-        positionMaxWeightOverrides: null,
-        isSampleDataOverride: null,
-        dataProvenanceOverride: null,
+        oewOverrideKg,
+        positionArmOverrides,
+        stationArmOverrides,
+        positionConstraintOverrides,
+        limitsOverride,
+        cgLimitsOverride,
+        macOverride,
+        fuelArmOverride,
+        positionMaxWeightOverrides,
+        isSampleDataOverride,
+        dataProvenanceOverride,
         physics,
       });
     },

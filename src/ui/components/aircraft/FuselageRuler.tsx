@@ -96,7 +96,7 @@ export const FuselageRuler: React.FC<{
       {minors.map((arm) => {
         const x = toX(arm);
         return (
-          <div key={`m-${arm}`} className="absolute" style={{ left: `${x}px`, top: 0 }}>
+          <div key={`m-${arm}`} className="absolute -translate-x-1/2" style={{ left: `${x}px`, top: 0 }}>
             <div
               className="w-px bg-slate-700/60"
               style={{ height: tickDown ? '6px' : '6px', marginTop: tickDown ? '0px' : undefined, marginBottom: !tickDown ? '0px' : undefined }}
@@ -109,7 +109,7 @@ export const FuselageRuler: React.FC<{
       {majors.map((arm) => {
         const x = toX(arm);
         return (
-          <div key={`M-${arm}`} className="absolute" style={{ left: `${x}px`, top: 0 }}>
+          <div key={`M-${arm}`} className="absolute -translate-x-1/2" style={{ left: `${x}px`, top: 0 }}>
             <div className="w-px h-[10px] bg-slate-600/90" />
             <div className={`absolute ${labelRow} mt-[12px] -translate-x-1/2 text-[9px] text-slate-500 font-mono tabular-nums`}>
               {fmtIn(arm)}
@@ -125,7 +125,7 @@ export const FuselageRuler: React.FC<{
         const lane = s.idx % 3;
         const y = 18 + lane * 10;
         return (
-          <div key={`S-${s.id}`} className="absolute" style={{ left: `${x}px`, top: 0 }}>
+          <div key={`S-${s.id}`} className="absolute -translate-x-1/2" style={{ left: `${x}px`, top: 0 }}>
             <div className="w-px h-[14px] bg-amber-500/35" />
             <div
               className="absolute left-0 -translate-x-1/2 whitespace-nowrap text-[9px] font-bold text-amber-200/80"
