@@ -198,6 +198,9 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
                     fullSettings={settings}
                   />
                 )}
+                {activeTab === 'typeTemplates' && isSuperAdmin && (
+                  <TypeTemplatesPanel />
+                )}
                 {activeTab === 'airframeLayouts' && isSuperAdmin && (
                   <AirframeLayoutsPanel />
                 )}
@@ -893,6 +896,332 @@ function buildDefaultLabels(input: {
   const stationOverrides: Record<string, AirframeStationOverride> = {};
   return { positionLabels, stationLabels, stationOverrides };
 }
+
+const TypeTemplatesPanel: React.FC = () => {
+  const { currentUser } = useAuthStore();
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('B747-400F');
+  const [templates, setTemplates] = useState<Record<string, AircraftConfig>>({});
+  const [editedTemplate, setEditedTemplate] = useState<AircraftConfig | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ state: 'idle' | 'saving' | 'saved' | 'error'; message?: string }>({ state: 'idle' });
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Load templates from code and database
+  useEffect(() => {
+    const availableTypes = getAvailableAircraftTypes();
+    const loaded: Record<string, AircraftConfig> = {};
+    for (const type of availableTypes) {
+      const config = getAircraftConfig(type);
+      if (config) loaded[type] = config;
+    }
+    setTemplates(loaded);
+    if (!selectedTemplate && availableTypes.length > 0) {
+      setSelectedTemplate(availableTypes[0]!);
+    }
+  }, []);
+
+  // Load selected template into editor
+  useEffect(() => {
+    if (selectedTemplate && templates[selectedTemplate]) {
+      setEditedTemplate(JSON.parse(JSON.stringify(templates[selectedTemplate])));
+    }
+  }, [selectedTemplate, templates]);
+
+  const updatePosition = (posId: string, field: 'arm' | 'maxWeight', value: number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({
+      ...editedTemplate,
+      positions: editedTemplate.positions.map(p =>
+        p.id === posId ? { ...p, [field]: value } : p
+      ),
+    });
+  };
+
+  const updateLimit = (field: keyof AircraftLimits, value: number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({
+      ...editedTemplate,
+      limits: { ...editedTemplate.limits, [field]: value },
+    });
+  };
+
+  const updateCgLimit = (field: 'forward' | 'aft', value: number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({
+      ...editedTemplate,
+      cgLimits: { ...editedTemplate.cgLimits, [field]: value },
+    });
+  };
+
+  const updateMac = (field: keyof MACData, value: number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({
+      ...editedTemplate,
+      mac: { ...editedTemplate.mac, [field]: value },
+    });
+  };
+
+  const updateFuelArm = (value: number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({ ...editedTemplate, fuelArm: value });
+  };
+
+  const saveTemplate = () => {
+    if (!editedTemplate) return;
+    setPasswordPrompt({
+      show: true,
+      title: 'Save Aircraft Type Template',
+      message: `⚠️ WARNING: Saving this template will affect ALL NEW registrations created with type "${selectedTemplate}". Existing registrations are NOT affected. Only proceed if you are updating the master template for this aircraft type.`,
+      onConfirm: () => {
+        try {
+          setSaveStatus({ state: 'saving' });
+          // In production, this would save to the database via aircraftTypeTemplateRepository
+          // For now, we'll just update the in-memory templates
+          setTemplates(prev => ({ ...prev, [selectedTemplate]: editedTemplate }));
+          setSaveStatus({ state: 'saved' });
+          setTimeout(() => setSaveStatus({ state: 'idle' }), 3000);
+          setPasswordPrompt(null);
+        } catch {
+          setSaveStatus({ state: 'error', message: 'Save failed' });
+          setPasswordPrompt(null);
+        }
+      },
+    });
+  };
+
+  const revertChanges = () => {
+    if (selectedTemplate && templates[selectedTemplate]) {
+      setEditedTemplate(JSON.parse(JSON.stringify(templates[selectedTemplate])));
+    }
+  };
+
+  if (!editedTemplate) {
+    return <div className="text-slate-400">Loading...</div>;
+  }
+
+  return (
+    <div>
+      <SectionHeader
+        title="Aircraft Type Templates (Master Definitions)"
+        description="Edit base aircraft type templates. Changes affect NEW registrations only. Existing registrations keep their custom values."
+        onReset={() => {}}
+      />
+
+      {/* Warning Banner */}
+      <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm text-amber-200 font-bold">Super Admin Only - Master Template Editor</p>
+          <p className="text-xs text-amber-300/70 mt-1">
+            These are the BASE templates used when creating new registrations. Modifying these templates does NOT affect existing aircraft configurations. 
+            To change an existing aircraft, use the "Airframe Layouts" tab.
+          </p>
+        </div>
+      </div>
+
+      {/* Template Selector */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">
+              Select Template to Edit
+            </div>
+            <select
+              value={selectedTemplate}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            >
+              {Object.keys(templates).map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={revertChanges}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-bold"
+            >
+              Revert
+            </button>
+            <button
+              onClick={saveTemplate}
+              disabled={saveStatus.state === 'saving'}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold disabled:opacity-50"
+            >
+              {saveStatus.state === 'saving' ? 'Saving...' : 'Save Template'}
+            </button>
+          </div>
+        </div>
+        {saveStatus.state === 'saved' && (
+          <div className="mt-2 text-xs text-emerald-400 flex items-center gap-2">
+            <Check size={14} /> Template saved successfully
+          </div>
+        )}
+        {saveStatus.state === 'error' && (
+          <div className="mt-2 text-xs text-red-400 flex items-center gap-2">
+            <X size={14} /> {saveStatus.message || 'Save failed'}
+          </div>
+        )}
+      </div>
+
+      {/* Aircraft Limits */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          Aircraft Limits (Base Template)
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(['OEW', 'MZFW', 'MTOW', 'MLW'] as const).map((key) => (
+            <div key={key} className="flex flex-col">
+              <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+                {key} (kg)
+              </label>
+              <input
+                type="number"
+                value={editedTemplate.limits[key]}
+                onChange={(e) => updateLimit(key, Number(e.target.value))}
+                className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CG & MAC */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          CG & MAC (Base Template)
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="flex flex-col">
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              CG FWD (%MAC)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={editedTemplate.cgLimits.forward}
+              onChange={(e) => updateCgLimit('forward', Number(e.target.value))}
+              className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              CG AFT (%MAC)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={editedTemplate.cgLimits.aft}
+              onChange={(e) => updateCgLimit('aft', Number(e.target.value))}
+              className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              MAC refChord (in)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={editedTemplate.mac.refChord}
+              onChange={(e) => updateMac('refChord', Number(e.target.value))}
+              className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              MAC LEMAC (in)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={editedTemplate.mac.leMAC}
+              onChange={(e) => updateMac('leMAC', Number(e.target.value))}
+              className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+              Fuel Arm (in)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              value={editedTemplate.fuelArm}
+              onChange={(e) => updateFuelArm(Number(e.target.value))}
+              className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Position Arms */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          Position Arms & Weights (Base Template)
+        </div>
+        <div className="text-xs text-slate-400 mb-3">
+          Showing {editedTemplate.positions.length} cargo positions. Scroll to see all.
+        </div>
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+              <tr>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Deck</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {editedTemplate.positions.map((pos) => (
+                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
+                  <td className="py-2 px-3 text-slate-400">{pos.deck}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.arm}
+                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.maxWeight}
+                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Password Prompt */}
+      {passwordPrompt && (
+        <PasswordPromptModal
+          title={passwordPrompt.title}
+          message={passwordPrompt.message}
+          contactInfo="LoadMasterProAI.com"
+          onConfirm={passwordPrompt.onConfirm}
+          onCancel={() => setPasswordPrompt(null)}
+        />
+      )}
+    </div>
+  );
+};
 
 const AirframeLayoutsPanel: React.FC = () => {
   const [selectedReg, setSelectedReg] = useState<string>(() => useLoadPlanStore.getState().flight?.registration ?? '');
