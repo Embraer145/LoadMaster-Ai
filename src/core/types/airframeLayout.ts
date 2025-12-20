@@ -128,6 +128,8 @@ export interface AirframeLayout {
   locked: boolean;
   doors: AirframeDoor[];
   updatedAtUtc: string;
+  /** User who last updated this layout (mechanic name, emp#, or super_admin username) */
+  updatedBy?: string;
 }
 
 

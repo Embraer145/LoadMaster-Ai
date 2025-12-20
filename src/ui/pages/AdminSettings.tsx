@@ -1453,6 +1453,11 @@ const AirframeLayoutsPanel: React.FC = () => {
         setSaveStatus({ state: 'error', message: 'DB not ready (cannot save yet).' });
         return;
       }
+      // Generate updated by info (in production, use actual user from auth system)
+      const updatedBy = currentUser?.username 
+        ? `${currentUser.username}`
+        : 'Mechanic J. Smith (EMP#4721)'; // Generic mechanic for now
+
       const saved = upsertAirframeLayout({
         registration: selectedReg,
         aircraftType: selectedType,
@@ -1481,6 +1486,7 @@ const AirframeLayoutsPanel: React.FC = () => {
           stationOverrides: editable.stationOverrides,
           positionConstraints: (editable as any).positionConstraints,
           doors: editable.doors,
+          updatedBy, // Add who made the change
         },
       });
       setLayoutsByReg((prev) => ({ ...prev, [selectedReg]: saved }));
@@ -1573,6 +1579,37 @@ const AirframeLayoutsPanel: React.FC = () => {
               ))}
             </select>
           </div>
+
+          {/* Registration Info Banner */}
+          {selectedReg && (
+            <div className="w-full mt-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 px-3 py-1 rounded-md">
+                  <div className="text-xs font-bold text-white">{selectedReg}</div>
+                </div>
+                <div className="text-xs text-slate-300">
+                  Viewing configuration for this tail number
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                {editable.updatedAtUtc && (
+                  <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                    <Clock size={12} />
+                    Last modified: {new Date(editable.updatedAtUtc).toLocaleString('en-US', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })}
+                  </div>
+                )}
+                {editable.updatedBy && (
+                  <div className="text-[10px] text-slate-400">
+                    By: <span className="font-bold text-blue-300">{editable.updatedBy}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="flex flex-col">

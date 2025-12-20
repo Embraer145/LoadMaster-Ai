@@ -76,6 +76,7 @@ export function parseAirframeLayout(record: AirframeLayoutRecord): AirframeLayou
     nextWeighDueUtc: typeof (parsed as any).nextWeighDueUtc === 'string' ? (parsed as any).nextWeighDueUtc : undefined,
     changeReason: typeof (parsed as any).changeReason === 'string' ? (parsed as any).changeReason : undefined,
     updatedAtUtc: record.updated_at,
+    updatedBy: typeof (parsed as any).updatedBy === 'string' ? (parsed as any).updatedBy : undefined,
   };
 }
 
@@ -129,6 +130,7 @@ export function upsertAirframeLayout(input: {
     weighReportDateUtc: (input.layout as any).weighReportDateUtc,
     nextWeighDueUtc: (input.layout as any).nextWeighDueUtc,
     changeReason: (input.layout as any).changeReason,
+    updatedBy: (input.layout as any).updatedBy,
   });
 
   execute(
@@ -196,6 +198,7 @@ export function upsertAirframeLayout(input: {
     nextWeighDueUtc: (input.layout as any).nextWeighDueUtc,
     changeReason: (input.layout as any).changeReason,
     updatedAtUtc: timestamp,
+    updatedBy: (input.layout as any).updatedBy,
   };
 }
 
