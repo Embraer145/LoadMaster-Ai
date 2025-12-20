@@ -1941,21 +1941,17 @@ const AirframeLayoutsPanel: React.FC = () => {
 
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Labels Preset */}
               <div className="flex flex-col">
                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
                   Labels preset
-                  <Shield size={12} className="text-amber-500" title="Super admin only" />
+                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" title="Super admin only" />}
                 </div>
-                <div className="relative">
+                {isSuperAdmin ? (
                   <select
                     value={editable.labelPreset ?? defaultPresetForType(selectedType)}
                     onChange={(e) => {
                       const newValue = e.target.value as AirframeLabelPreset;
-                      if (!isSuperAdmin) {
-                        e.preventDefault();
-                        e.target.value = editable.labelPreset ?? defaultPresetForType(selectedType);
-                        return;
-                      }
                       setPasswordPrompt({
                         show: true,
                         title: 'Change Labels Preset',
@@ -1967,35 +1963,37 @@ const AirframeLayoutsPanel: React.FC = () => {
                       });
                     }}
                     disabled={!selectedReg}
-                    className={`mt-1 border border-slate-700 rounded px-2 py-2 text-xs ${
-                      isSuperAdmin
-                        ? 'bg-slate-800 text-white cursor-pointer'
-                        : 'bg-slate-900 text-slate-600 cursor-not-allowed'
-                    }`}
-                    title={isSuperAdmin ? 'Label preset' : 'Super admin only - Contact LoadMasterProAI.com'}
+                    className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white cursor-pointer"
+                    title="Label preset"
                   >
                     <option value="blank">Blank</option>
                     <option value="alphabetic">Alphabetic</option>
                     <option value="numeric">Numeric</option>
                     <option value="ups">UPS</option>
                   </select>
-                </div>
+                ) : (
+                  <div className="mt-1 p-2 bg-slate-900/50 border border-slate-700 rounded flex items-center gap-2">
+                    <div className="px-2 py-0.5 bg-blue-600/20 border border-blue-500/30 rounded text-xs font-bold text-blue-300">
+                      {(editable.labelPreset ?? defaultPresetForType(selectedType)).toUpperCase()}
+                    </div>
+                    <div className="text-[9px] text-slate-500">
+                      (Locked - Contact <span className="text-amber-400 font-bold">LoadMasterProAI.com</span>)
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Aircraft Type */}
               <div className="flex flex-col">
                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
                   Aircraft type
-                  <Shield size={12} className="text-amber-500" title="Super admin only" />
+                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" title="Super admin only" />}
                 </div>
-                <div className="relative">
+                {isSuperAdmin ? (
                   <select
                     value={selectedType}
                     onChange={(e) => {
                       const newType = e.target.value;
-                      if (!isSuperAdmin) {
-                        e.preventDefault();
-                        e.target.value = selectedType;
-                        return;
-                      }
                       setPasswordPrompt({
                         show: true,
                         title: 'Change Aircraft Type',
@@ -2007,16 +2005,8 @@ const AirframeLayoutsPanel: React.FC = () => {
                       });
                     }}
                     disabled={!selectedReg}
-                    className={`mt-1 border border-slate-700 rounded px-2 py-2 text-xs ${
-                      isSuperAdmin
-                        ? 'bg-slate-800 text-white cursor-pointer'
-                        : 'bg-slate-900 text-slate-600 cursor-not-allowed'
-                    }`}
-                    title={
-                      isSuperAdmin
-                        ? 'Aircraft type (controls slot set + diagram layout)'
-                        : 'Super admin only - Contact LoadMasterProAI.com'
-                    }
+                    className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white cursor-pointer"
+                    title="Aircraft type (controls slot set + diagram layout)"
                   >
                     {getAvailableAircraftTypes().map((t) => (
                       <option key={t} value={t}>
@@ -2024,11 +2014,15 @@ const AirframeLayoutsPanel: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                </div>
-                {!isSuperAdmin && (
-                  <p className="mt-1 text-[9px] text-slate-600">
-                    To change, contact <span className="text-amber-400 font-bold">LoadMasterProAI.com</span>
-                  </p>
+                ) : (
+                  <div className="mt-1 p-2 bg-slate-900/50 border border-slate-700 rounded flex items-center gap-2">
+                    <div className="px-2 py-0.5 bg-emerald-600/20 border border-emerald-500/30 rounded text-xs font-bold text-emerald-300">
+                      {selectedType}
+                    </div>
+                    <div className="text-[9px] text-slate-500">
+                      (Locked - Contact <span className="text-amber-400 font-bold">LoadMasterProAI.com</span>)
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
