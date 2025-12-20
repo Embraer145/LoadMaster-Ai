@@ -434,10 +434,9 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw size={12} /> Import
           </button>
           
-          {onOpenSettings && (
-            <div className="flex items-center gap-2">
-              {/* Role Switcher */}
-              <div className="relative" ref={roleSwitcherRef}>
+          {/* Role Switcher - ALWAYS VISIBLE (for testing) */}
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={roleSwitcherRef}>
                 <button
                   onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors"
@@ -505,8 +504,10 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
+            </div>
 
+            {/* Settings Button - Only for users with settings access */}
+            {onOpenSettings && (
               <button 
                 onClick={onOpenSettings}
                 className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"
@@ -514,8 +515,8 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Settings size={16} />
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
       
