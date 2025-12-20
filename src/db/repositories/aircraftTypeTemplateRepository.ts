@@ -6,7 +6,6 @@
  */
 
 import { queryOne, query, execute, generateId, now } from '../database';
-import type { SyncStatus } from '../types';
 import type { AircraftConfig } from '@core/types';
 
 export interface AircraftTypeTemplateRecord {

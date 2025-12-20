@@ -1254,7 +1254,7 @@ const TypeTemplatesPanel: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {editedTemplate.stations.map((station) => (
+                {(editedTemplate.stations ?? []).map((station) => (
                   <tr key={station.id} className="border-b border-slate-800 hover:bg-slate-800/30">
                     <td className="py-2 px-3 font-mono text-white text-xs">{station.id}</td>
                     <td className="py-2 px-3">
@@ -2031,7 +2031,7 @@ const AirframeLayoutsPanel: React.FC = () => {
               <div className="flex flex-col">
                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
                   Labels preset
-                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" title="Super admin only" />}
+                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" />}
                 </div>
                 {isSuperAdmin ? (
                   <select
@@ -2073,7 +2073,7 @@ const AirframeLayoutsPanel: React.FC = () => {
               <div className="flex flex-col">
                 <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
                   Aircraft type
-                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" title="Super admin only" />}
+                  {!isSuperAdmin && <Shield size={12} className="text-amber-500" />}
                 </div>
                 {isSuperAdmin ? (
                   <select

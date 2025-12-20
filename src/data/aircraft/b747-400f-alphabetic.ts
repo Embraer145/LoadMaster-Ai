@@ -10,6 +10,7 @@ import type {
   AircraftConfig, 
   PositionDefinition,
   DeckType,
+  PositionType,
   LowerHoldGroup,
   StationDefinition,
   PositionConstraint,
@@ -227,27 +228,27 @@ export const B747_LOWER_DECK = LOWER_DECK_POSITIONS;
  * Get positions by deck
  */
 export function getPositionsByDeck(deck: DeckType): PositionDefinition[] {
-  return B747_400F_CONFIG.positions.filter(p => p.deck === deck);
+  return B747_400F_ALPHABETIC_CONFIG.positions.filter((p: PositionDefinition) => p.deck === deck);
 }
 
 /**
  * Get main deck left side positions
  */
 export function getMainDeckLeft(): PositionDefinition[] {
-  return MAIN_DECK_POSITIONS.filter(p => p.type === 'left');
+  return MAIN_DECK_POSITIONS.filter((p: PositionDefinition) => p.type === 'left');
 }
 
 /**
  * Get main deck right side positions
  */
 export function getMainDeckRight(): PositionDefinition[] {
-  return MAIN_DECK_POSITIONS.filter(p => p.type === 'right');
+  return MAIN_DECK_POSITIONS.filter((p: PositionDefinition) => p.type === 'right');
 }
 
 /**
  * Get lower deck positions by group
  */
 export function getLowerDeckByGroup(group: LowerHoldGroup): PositionDefinition[] {
-  return LOWER_DECK_POSITIONS.filter(p => p.group === group);
+  return LOWER_DECK_POSITIONS.filter((p: PositionDefinition) => p.group === group);
 }
 
