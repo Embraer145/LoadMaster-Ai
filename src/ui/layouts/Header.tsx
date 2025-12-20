@@ -10,10 +10,12 @@
  * - Date
  */
 
-import React, { useState, useEffect } from 'react';
-import { Plane, RefreshCw, Calendar as CalendarIcon, Settings, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plane, RefreshCw, Calendar as CalendarIcon, Settings, ArrowRight, ChevronDown, User } from 'lucide-react';
 import { WGA_FLEET, WGA_FLIGHT_NUMBERS } from '@data/operators';
 import type { FlightInfo } from '@core/types';
+import { useAuthStore } from '@core/auth';
+import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '@core/auth/types';
 import avatarUrl from '../../assets/avatar-loadmaster.svg';
 
 // Common cargo airports for selection
@@ -51,9 +53,7 @@ interface HeaderProps {
   onImport: () => void;
   onTestSetup: () => void;
   onOpenSettings?: () => void;
-  onOpenProfile?: () => void;
   onGoHome?: () => void;
-  userLabel?: string;
   /** Display a caution badge when aircraft data is sample/simplified */
   isSampleData?: boolean;
   /** Shows whether the local sql.js DB is initialized (helps diagnose multi-tab differences). */
@@ -68,9 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   onImport,
   onTestSetup,
   onOpenSettings,
-  onOpenProfile,
   onGoHome,
-  userLabel,
   isSampleData,
   dbReady,
 }) => {
@@ -83,6 +81,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [origin, setOrigin] = useState(flight?.origin ?? '');
   const [destination, setDestination] = useState(flight?.destination ?? '');
   const [stopover, setStopover] = useState(flight?.stopover ?? '');
+  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+  const roleSwitcherRef = useRef<HTMLDivElement>(null);
+  const { currentUser, switchRole, getAvailableRoles } = useAuthStore();
 
   // Sync local state when flight prop changes (e.g., from Test Data button)
   useEffect(() => {
@@ -99,6 +100,19 @@ export const Header: React.FC<HeaderProps> = ({
       setFleet(match?.fleet ?? 'B747');
     }
   }, [flight]);
+
+  // Close role switcher when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (roleSwitcherRef.current && !roleSwitcherRef.current.contains(event.target as Node)) {
+        setShowRoleSwitcher(false);
+      }
+    };
+    if (showRoleSwitcher) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showRoleSwitcher]);
 
   const demoProfiles: Array<{ id: 'KOREAN' | 'ATLAS' | 'UPS'; label: string; aircraftType: string; syntheticReg: string }> = [
     { id: 'KOREAN', label: 'Korean • Alphabetic', aircraftType: 'B747-400F', syntheticReg: 'DEMO_KOREAN' },
@@ -422,20 +436,77 @@ export const Header: React.FC<HeaderProps> = ({
           
           {onOpenSettings && (
             <div className="flex items-center gap-2">
-              {onOpenProfile && (
+              {/* Role Switcher */}
+              <div className="relative" ref={roleSwitcherRef}>
                 <button
-                  onClick={onOpenProfile}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"
-                  title={`Profile${userLabel ? ` (${userLabel})` : ''}`}
+                  onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors"
+                  title="Switch role (for testing)"
                 >
                   <img
                     src={avatarUrl}
                     alt="User profile"
-                    className="w-6 h-6 rounded-full border border-slate-700 bg-slate-950/40"
+                    className="w-5 h-5 rounded-full border border-slate-600 bg-slate-950/40"
                     draggable={false}
                   />
+                  <div className="flex flex-col items-start">
+                    <div className="text-[10px] font-bold text-white leading-none">
+                      {currentUser?.displayName ?? 'Test User'}
+                    </div>
+                    <div className="text-[8px] text-slate-500 leading-none mt-0.5">
+                      {currentUser ? ROLE_LABELS[currentUser.role] : 'Unknown'}
+                    </div>
+                  </div>
+                  <ChevronDown size={12} className={`transition-transform ${showRoleSwitcher ? 'rotate-180' : ''}`} />
                 </button>
-              )}
+
+                {/* Role Switcher Dropdown */}
+                {showRoleSwitcher && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50">
+                    <div className="p-3 bg-slate-800/50 border-b border-slate-700">
+                      <div className="text-xs font-bold text-white">Switch Role</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Test different user perspectives</div>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {getAvailableRoles().map((user) => (
+                        <button
+                          key={user.id}
+                          onClick={() => {
+                            switchRole(user.role);
+                            setShowRoleSwitcher(false);
+                            // Reload page to apply new permissions
+                            window.location.reload();
+                          }}
+                          className={`w-full text-left px-4 py-3 hover:bg-slate-800/50 transition-colors border-b border-slate-800/50 ${
+                            currentUser?.role === user.role ? 'bg-blue-600/10' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-2 rounded-full ${
+                              currentUser?.role === user.role ? 'bg-blue-500' : 'bg-slate-700'
+                            }`} />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <User size={12} className="text-slate-500" />
+                                <span className="text-xs font-bold text-white">{user.displayName}</span>
+                                {currentUser?.role === user.role && (
+                                  <span className="px-1.5 py-0.5 bg-blue-600/20 border border-blue-500/30 rounded text-[8px] text-blue-300 font-bold">
+                                    ACTIVE
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {ROLE_LABELS[user.role]} • {ROLE_DESCRIPTIONS[user.role]}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button 
                 onClick={onOpenSettings}
                 className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700"

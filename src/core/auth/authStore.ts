@@ -21,20 +21,76 @@ interface AuthState {
   ensureDefaultUser: () => void;
   login: (username: string, password: string) => { ok: true } | { ok: false; error: string };
   logout: () => void;
+  switchRole: (role: UserRole) => void;
+  getAvailableRoles: () => UserProfile[];
 }
 
 const DEFAULT_TEST_USERNAME = 'TEST';
 const DEFAULT_TEST_PASSWORD = 'TEST';
 
-function makeTestUser(): UserProfile {
-  return {
+// Test users for each role
+const TEST_USERS: Record<string, UserProfile> = {
+  LOADMASTER: {
+    id: 'user_loadmaster',
+    username: 'LOADMASTER',
+    displayName: 'Alex Johnson (Loadmaster)',
+    role: 'loadmaster',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  MECHANIC: {
+    id: 'user_mechanic',
+    username: 'MECHANIC',
+    displayName: 'Mike Torres (Mechanic)',
+    role: 'mechanic',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  PILOT: {
+    id: 'user_pilot',
+    username: 'PILOT',
+    displayName: 'Capt. Sarah Chen',
+    role: 'pilot',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  DISPATCHER: {
+    id: 'user_dispatcher',
+    username: 'DISPATCHER',
+    displayName: 'Jordan Lee (Dispatcher)',
+    role: 'dispatcher',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  ADMIN: {
+    id: 'user_admin',
+    username: 'ADMIN',
+    displayName: 'Chris Martinez (Manager)',
+    role: 'admin',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  SUPERADMIN: {
+    id: 'user_superadmin',
+    username: 'SUPERADMIN',
+    displayName: 'LoadMaster Pro Support',
+    role: 'super_admin',
+    operatorCode: 'WGA',
+    createdAt: new Date().toISOString(),
+  },
+  // Legacy test user (defaults to super_admin for compatibility)
+  TEST: {
     id: 'user_test',
-    username: DEFAULT_TEST_USERNAME,
+    username: 'TEST',
     displayName: 'Test User',
     role: 'super_admin',
     operatorCode: 'WGA',
     createdAt: new Date().toISOString(),
-  };
+  },
+};
+
+function makeTestUser(): UserProfile {
+  return TEST_USERS.TEST;
 }
 
 function bestEffortAudit(action: 'USER_LOGIN' | 'USER_LOGOUT', user: UserProfile | null) {
@@ -75,8 +131,9 @@ export const useAuthStore = create<AuthState>()(
         const u = username.trim().toUpperCase();
         const p = password.trim().toUpperCase();
 
-        if (u === DEFAULT_TEST_USERNAME && p === DEFAULT_TEST_PASSWORD) {
-          const user = makeTestUser();
+        // Check if username matches any test user
+        const user = TEST_USERS[u];
+        if (user && p === DEFAULT_TEST_PASSWORD) {
           set({ status: 'authenticated', currentUser: user });
           bestEffortAudit('USER_LOGIN', user);
           return { ok: true };
@@ -89,6 +146,18 @@ export const useAuthStore = create<AuthState>()(
         const prev = get().currentUser;
         set({ status: 'anonymous', currentUser: null });
         bestEffortAudit('USER_LOGOUT', prev);
+      },
+
+      switchRole: (role) => {
+        const user = Object.values(TEST_USERS).find((u) => u.role === role);
+        if (user) {
+          set({ status: 'authenticated', currentUser: user });
+          bestEffortAudit('USER_LOGIN', user);
+        }
+      },
+
+      getAvailableRoles: () => {
+        return Object.values(TEST_USERS).filter((u) => u.username !== 'TEST');
       },
     }),
     {
@@ -106,5 +175,7 @@ export const AUTH_DEFAULTS = {
   username: DEFAULT_TEST_USERNAME,
   password: DEFAULT_TEST_PASSWORD,
 };
+
+export { TEST_USERS };
 
 

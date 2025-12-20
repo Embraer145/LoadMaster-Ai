@@ -14,7 +14,7 @@ import {
 import { useLoadPlanStore, useSelectedContent, useSelectedPosition } from '@store/loadPlanStore';
 import { useOptimizationSettings, useSettings } from '@core/settings';
 import { sortWarehouseItems, WAREHOUSE_SORT_LABEL, type WarehouseSortMode } from '@core/warehouse';
-import { useAuthStore } from '@core/auth';
+import { useAuthStore, getPermissions } from '@core/auth';
 import { getDbBroadcastChannel, getDbRevKey, initDatabase, reloadDatabaseFromStorage } from './db/database';
 import { logAudit } from './db/repositories/auditRepository';
 import { isDatabaseInitialized } from './db/database';
@@ -43,7 +43,8 @@ declare const __APP_VERSION__: string;
 // Data
 
 export default function App() {
-  const { status: authStatus, currentUser, ensureDefaultUser } = useAuthStore();
+  const { currentUser, ensureDefaultUser } = useAuthStore();
+  const permissions = useMemo(() => getPermissions(currentUser?.role), [currentUser?.role]);
   const [dbReady, setDbReady] = useState<boolean>(() => isDatabaseInitialized());
 
   // Store state
@@ -678,21 +679,38 @@ export default function App() {
         onAircraftTypeSelect={(t) => setAircraftType(t)}
         onImport={handleImport}
         onTestSetup={handleTestSetup}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenProfile={() => setShowProfile(true)}
+        onOpenSettings={permissions.canAccessSettings ? () => setShowSettings(true) : undefined}
         onGoHome={() => {
           window.location.hash = '#';
         }}
-        userLabel={authStatus === 'authenticated' && currentUser ? currentUser.username : undefined}
         isSampleData={!!aircraftConfig?.isSampleData}
         dbReady={dbReady}
       />
+
+      {/* Role Access Banner (for read-only/limited roles) */}
+      {(currentUser?.role === 'pilot' || currentUser?.role === 'dispatcher') && (
+        <div className="bg-blue-900/20 border-b border-blue-700/30 px-4 py-2">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-3">
+            <div className="px-2 py-1 bg-blue-600/20 border border-blue-500/40 rounded">
+              <span className="text-xs font-bold text-blue-300">
+                {currentUser.role === 'pilot' ? '👨‍✈️ PILOT' : '📋 DISPATCHER'}
+              </span>
+            </div>
+            <div className="text-xs text-slate-300">
+              {currentUser.role === 'pilot' 
+                ? 'Read-only access: View finalized loadsheets, Captain\'s Brief, and flight envelope'
+                : 'Limited access: View load plans and create flight schedules'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Warehouse Staging Area */}
       <div
         className={`bg-slate-900 border-b border-slate-800 shadow-inner relative z-40 overflow-hidden
           transition-[max-height,padding] duration-300 ease-out
           ${warehouseCollapsed ? 'px-3 py-1' : 'px-3 py-2'}
+          ${!permissions.canAccessWarehouse ? 'pointer-events-none opacity-50' : ''}
         `}
         style={{
           maxHeight: warehouseCollapsed ? 40 : warehouseBarHeightPx,
@@ -1127,35 +1145,44 @@ export default function App() {
             )}
 
             {activeRegistration ? (
-              <AircraftDiagram
-                aircraftType={aircraftConfig.type}
-                aircraftConfig={aircraftConfig}
-                positions={positions}
-                selection={selection}
-                drag={drag}
-                toast={toast}
-                onDismissToast={clearToast}
-                onOverrideToast={() => overrideLastDrop()}
-                onDragEnd={() => endDrag()}
-                flight={flight}
-                airframeLayout={airframeLayout}
-                mainDeckLateralDeltaKg={mainDelta}
-                mainDeckLateralLimitKg={lateralLimitKg}
-                lateralCheckEnabled={lateralCheckEnabled}
-                optimizationMode={optimizationMode}
-                aiStatus={aiStatus}
-                onSelectOptimizationMode={handleSelectModeAndAutoLoad}
-                onClearAll={clearAll}
-                physics={physics}
-                onOpenNotoc={() => setShowNotoc(true)}
-                onOpenFinalize={() => setShowFinalize(true)}
-                onOpenCaptainBrief={() => setShowCaptainBrief(true)}
-                onOpenProofPack={() => setShowProofPack(true)}
-                onOpenAirframeInfo={() => setShowAirframeInfo(true)}
-                onSelectPosition={selectPosition}
-                onDragStart={handleDragStart}
-                onDrop={handleDrop}
-              />
+              <div className={`relative ${!permissions.canEditLoadPlan ? 'pointer-events-none' : ''}`}>
+                {!permissions.canEditLoadPlan && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-blue-900/90 border border-blue-600/50 rounded-lg backdrop-blur-sm">
+                    <div className="text-xs font-bold text-blue-200">
+                      🔒 Read-Only Mode - {currentUser?.role === 'pilot' ? 'Pilot View' : 'View Only'}
+                    </div>
+                  </div>
+                )}
+                <AircraftDiagram
+                  aircraftType={aircraftConfig.type}
+                  aircraftConfig={aircraftConfig}
+                  positions={positions}
+                  selection={selection}
+                  drag={drag}
+                  toast={toast}
+                  onDismissToast={clearToast}
+                  onOverrideToast={() => overrideLastDrop()}
+                  onDragEnd={() => endDrag()}
+                  flight={flight}
+                  airframeLayout={airframeLayout}
+                  mainDeckLateralDeltaKg={mainDelta}
+                  mainDeckLateralLimitKg={lateralLimitKg}
+                  lateralCheckEnabled={lateralCheckEnabled}
+                  optimizationMode={optimizationMode}
+                  aiStatus={aiStatus}
+                  onSelectOptimizationMode={handleSelectModeAndAutoLoad}
+                  onClearAll={permissions.canEditLoadPlan ? clearAll : () => {}}
+                  physics={physics}
+                  onOpenNotoc={() => setShowNotoc(true)}
+                  onOpenFinalize={permissions.canFinalizeLoadPlan ? () => setShowFinalize(true) : () => {}}
+                  onOpenCaptainBrief={() => setShowCaptainBrief(true)}
+                  onOpenProofPack={() => setShowProofPack(true)}
+                  onOpenAirframeInfo={() => setShowAirframeInfo(true)}
+                  onSelectPosition={selectPosition}
+                  onDragStart={handleDragStart}
+                  onDrop={handleDrop}
+                />
+              </div>
             ) : (
               <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">No aircraft selected</div>

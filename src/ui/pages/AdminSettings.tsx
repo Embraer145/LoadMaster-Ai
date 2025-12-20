@@ -46,8 +46,14 @@ interface AdminSettingsProps {
 export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('optimization');
   const { currentUser } = useAuthStore();
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'test' || currentUser?.role === 'super_admin';
+  
+  // Permission levels
   const isSuperAdmin = currentUser?.role === 'super_admin';
+  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+  const isMechanic = currentUser?.role === 'mechanic';
+  const canEdit = isAdmin; // General settings require admin or super_admin
+  const canEditAirframes = isMechanic || isAdmin; // Airframe layouts: mechanic, admin, or super_admin
+  
   const settings = useSettings();
   const { 
     updateGeneralSettings,
@@ -61,17 +67,26 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     resetToDefaults,
   } = useSettingsStore();
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; superOnly?: boolean }[] = [
-    { id: 'general', label: 'General', icon: <Settings size={16} /> },
-    { id: 'standardWeights', label: 'Standard Weights', icon: <Scale size={16} /> },
-    { id: 'optimization', label: 'AI Optimization', icon: <Zap size={16} /> },
-    { id: 'dg', label: 'Dangerous Goods', icon: <AlertTriangle size={16} /> },
-    { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} /> },
-    { id: 'display', label: 'Display', icon: <Monitor size={16} /> },
-    { id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={16} /> },
-    { id: 'typeTemplates', label: 'Type Templates', icon: <Shield size={16} />, superOnly: true },
-    { id: 'airframeLayouts', label: 'Airframe Layouts', icon: <DoorOpen size={16} />, superOnly: true },
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; requiredRole?: 'admin' | 'mechanic' | 'super_admin' }[] = [
+    { id: 'general', label: 'General', icon: <Settings size={16} />, requiredRole: 'admin' },
+    { id: 'standardWeights', label: 'Standard Weights', icon: <Scale size={16} />, requiredRole: 'admin' },
+    { id: 'optimization', label: 'AI Optimization', icon: <Zap size={16} />, requiredRole: 'admin' },
+    { id: 'dg', label: 'Dangerous Goods', icon: <AlertTriangle size={16} />, requiredRole: 'admin' },
+    { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} />, requiredRole: 'admin' },
+    { id: 'display', label: 'Display', icon: <Monitor size={16} />, requiredRole: 'admin' },
+    { id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={16} />, requiredRole: 'admin' },
+    { id: 'typeTemplates', label: 'Type Templates', icon: <Shield size={16} />, requiredRole: 'super_admin' },
+    { id: 'airframeLayouts', label: 'Airframe Layouts', icon: <DoorOpen size={16} />, requiredRole: 'mechanic' },
   ];
+
+  // Filter tabs based on user role
+  const hasTabAccess = (tab: typeof tabs[0]) => {
+    if (!tab.requiredRole) return true;
+    if (isSuperAdmin) return true; // Super admin sees everything
+    if (tab.requiredRole === 'admin') return isAdmin;
+    if (tab.requiredRole === 'mechanic') return canEditAirframes;
+    return false;
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-sm z-[200] overflow-y-auto">
@@ -116,7 +131,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
             <div className="w-56 flex-shrink-0">
               <nav className="space-y-1">
                 {tabs
-                  .filter((t) => !t.superOnly || isSuperAdmin)
+                  .filter(hasTabAccess)
                   .map(tab => (
                   <button
                     key={tab.id}
@@ -201,7 +216,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
                 {activeTab === 'typeTemplates' && isSuperAdmin && (
                   <TypeTemplatesPanel />
                 )}
-                {activeTab === 'airframeLayouts' && isSuperAdmin && (
+                {activeTab === 'airframeLayouts' && canEditAirframes && (
                   <AirframeLayoutsPanel />
                 )}
               </div>
