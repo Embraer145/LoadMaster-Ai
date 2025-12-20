@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [fleet, setFleet] = useState<'B747' | 'MD11'>('B747');
   const [mode, setMode] = useState<'real' | 'demo'>('real');
-  const [demoProfile, setDemoProfile] = useState<'KOREAN' | 'ATLAS' | 'UPS'>('UPS');
+  const [demoProfile, setDemoProfile] = useState<'KOREAN' | 'ATLAS' | 'UPS' | 'CUSTOM'>('UPS');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [reg, setReg] = useState(flight?.registration ?? '');
   const [flightNumber, setFlightNumber] = useState(flight?.flightNumber ?? '');
@@ -114,10 +114,11 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [showRoleSwitcher]);
 
-  const demoProfiles: Array<{ id: 'KOREAN' | 'ATLAS' | 'UPS'; label: string; aircraftType: string; syntheticReg: string }> = [
-    { id: 'KOREAN', label: 'Korean • Alphabetic', aircraftType: 'B747-400F', syntheticReg: 'DEMO_KOREAN' },
+  const demoProfiles: Array<{ id: 'KOREAN' | 'ATLAS' | 'UPS' | 'CUSTOM'; label: string; aircraftType: string; syntheticReg: string }> = [
+    { id: 'KOREAN', label: 'Korean • Alphabetic', aircraftType: 'B747-400F-ALPHABETIC', syntheticReg: 'DEMO_KOREAN' },
     { id: 'ATLAS', label: 'Atlas • Numeric', aircraftType: 'B747-400F-NUMERIC', syntheticReg: 'DEMO_ATLAS' },
     { id: 'UPS', label: 'UPS • UPS', aircraftType: 'B747-400F-UPS', syntheticReg: 'DEMO_UPS' },
+    { id: 'CUSTOM', label: 'Custom • Blank', aircraftType: 'B747-400F-CUSTOM', syntheticReg: 'DEMO_CUSTOM' },
   ];
 
   const activeDemo = demoProfiles.find((p) => p.id === demoProfile) ?? demoProfiles[0]!;

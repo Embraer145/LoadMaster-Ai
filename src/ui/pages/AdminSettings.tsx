@@ -32,7 +32,7 @@ import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
 import { getDbRevKey, isDatabaseInitialized, query } from '@db/database';
 import { getAirframeLayoutByRegistration, upsertAirframeLayout } from '@db/repositories/airframeLayoutRepository';
-import { getAircraftConfig, getAvailableAircraftTypes } from '@data/aircraft';
+import { getAircraftConfig, getAvailableAircraftTypes, getEditableTemplateTypes, getTemplateDisplayName } from '@data/aircraft';
 import { WGA_FLEET } from '@data/operators';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
 import { PasswordPromptModal } from '@ui/components/modals';
@@ -914,7 +914,7 @@ function buildDefaultLabels(input: {
 
 const TypeTemplatesPanel: React.FC = () => {
   const { currentUser } = useAuthStore();
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('B747-400F');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('B747-400F-ALPHABETIC');
   const [templates, setTemplates] = useState<Record<string, AircraftConfig>>({});
   const [editedTemplate, setEditedTemplate] = useState<AircraftConfig | null>(null);
   const [saveStatus, setSaveStatus] = useState<{ state: 'idle' | 'saving' | 'saved' | 'error'; message?: string }>({ state: 'idle' });
@@ -925,17 +925,17 @@ const TypeTemplatesPanel: React.FC = () => {
     onConfirm: () => void;
   } | null>(null);
 
-  // Load templates from code and database
+  // Load only the editable templates (not aliases)
   useEffect(() => {
-    const availableTypes = getAvailableAircraftTypes();
+    const editableTypes = getEditableTemplateTypes();
     const loaded: Record<string, AircraftConfig> = {};
-    for (const type of availableTypes) {
+    for (const type of editableTypes) {
       const config = getAircraftConfig(type);
       if (config) loaded[type] = config;
     }
     setTemplates(loaded);
-    if (!selectedTemplate && availableTypes.length > 0) {
-      setSelectedTemplate(availableTypes[0]!);
+    if (!selectedTemplate && editableTypes.length > 0) {
+      setSelectedTemplate(editableTypes[0]!);
     }
   }, []);
 
@@ -1052,7 +1052,7 @@ const TypeTemplatesPanel: React.FC = () => {
             >
               {Object.keys(templates).map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {getTemplateDisplayName(type)}
                 </option>
               ))}
             </select>

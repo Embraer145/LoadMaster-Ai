@@ -1,10 +1,9 @@
 /**
- * Boeing 747-400F Aircraft Configuration (Legacy Export)
+ * Boeing 747-400F Aircraft Configuration (ALPHABETIC Layout)
  * 
- * For backward compatibility, this file re-exports the ALPHABETIC template.
- * New code should use b747-400f-alphabetic.ts directly.
- * 
- * Use this for generic B747-400F references.
+ * This is the standard alphabetic position layout template.
+ * Position IDs: A1, A2, B1, CL, CR, DL, DR, ... SL, SR, T
+ * Used by most operators as the base template.
  */
 
 import type { 
@@ -164,9 +163,9 @@ const STATIONS: StationDefinition[] = [
 /**
  * Complete B747-400F Configuration
  */
-export const B747_400F_CONFIG: AircraftConfig = {
-  type: 'B747-400F',
-  displayName: 'Boeing 747-400 Freighter',
+export const B747_400F_ALPHABETIC_CONFIG: AircraftConfig = {
+  type: 'B747-400F-ALPHABETIC',
+  displayName: 'Boeing 747-400F (Alphabetic Layout)',
   // IMPORTANT: This config currently uses simplified/sample arms + limits placeholders.
   // Replace with traceable aircraft manual data before any operational/FAA-acceptance effort.
   isSampleData: true,
