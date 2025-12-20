@@ -48,7 +48,6 @@ export const ModernVisualView: React.FC<ModernVisualViewProps> = ({
     physics.towCG - physics.forwardLimit,
     physics.aftLimit - physics.towCG
   );
-  const cgMarginPercent = (cgMargin / (physics.aftLimit - physics.forwardLimit)) * 100;
   
   // Calculate lateral balance
   let leftWeight = 0;
@@ -151,7 +150,7 @@ export const ModernVisualView: React.FC<ModernVisualViewProps> = ({
               label="CG MARGIN"
               value={physics.towCG.toFixed(1)}
               unit="% MAC"
-              max={aircraftConfig.limits.aftCGLimit}
+              max={aircraftConfig.cgLimits.aft}
               danger={cgMargin < 2}
             />
           </div>
