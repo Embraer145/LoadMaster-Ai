@@ -1185,30 +1185,28 @@ const TypeTemplatesPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Position Arms */}
-      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30">
+      {/* Main Deck Positions */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
-          Position Arms & Weights (Base Template)
+          Main Deck Positions
         </div>
         <div className="text-xs text-slate-400 mb-3">
-          Showing {editedTemplate.positions.length} cargo positions. Scroll to see all.
+          Showing {editedTemplate.positions.filter(p => p.deck === 'MAIN').length} main deck cargo positions.
         </div>
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
               <tr>
                 <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Deck</th>
                 <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
                 <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
                 <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
               </tr>
             </thead>
             <tbody>
-              {editedTemplate.positions.map((pos) => (
+              {editedTemplate.positions.filter(p => p.deck === 'MAIN').map((pos) => (
                 <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
                   <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
-                  <td className="py-2 px-3 text-slate-400">{pos.deck}</td>
                   <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
                   <td className="py-2 px-3 text-right">
                     <input
@@ -1233,13 +1231,71 @@ const TypeTemplatesPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Station Arms (Crew, Jumpseats, Riders, Items) */}
+      {/* Lower Deck Positions */}
       <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
-          Station Arms (Crew/Jumpseats/Riders/Items)
+          Lower Deck Positions (Belly Holds)
         </div>
         <div className="text-xs text-slate-400 mb-3">
-          Non-cargo weight & balance stations. Showing {editedTemplate.stations?.length ?? 0} stations.
+          Showing {editedTemplate.positions.filter(p => p.deck === 'LOWER').length} lower deck cargo positions.
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+              <tr>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Group</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {editedTemplate.positions.filter(p => p.deck === 'LOWER').map((pos) => (
+                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">
+                    {pos.group && (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        pos.group === 'FWD' ? 'bg-cyan-600/20 text-cyan-300' :
+                        pos.group === 'AFT' ? 'bg-orange-600/20 text-orange-300' :
+                        'bg-red-600/20 text-red-300'
+                      }`}>
+                        {pos.group}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.arm}
+                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.maxWeight}
+                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Upper Deck Stations (Non-Cargo) */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          Upper Deck Stations (Non-Cargo W&B)
+        </div>
+        <div className="text-xs text-slate-400 mb-3">
+          Crew, jumpseats, riders, and items/equipment. Showing {editedTemplate.stations?.length ?? 0} stations.
         </div>
         {(editedTemplate.stations?.length ?? 0) > 0 ? (
           <div className="max-h-64 overflow-y-auto">
