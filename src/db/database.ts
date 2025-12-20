@@ -376,6 +376,15 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
     );
   }
 
+  // Seed aircraft type templates (master definitions)
+  try {
+    const { seedTemplatesFromCode } = await import('./seedTemplates');
+    seedTemplatesFromCode();
+    debugLog('Aircraft type templates seeded');
+  } catch (err) {
+    debugLog('Template seeding skipped (best-effort):', err);
+  }
+
   debugLog('Initial data seeded');
 }
 

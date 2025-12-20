@@ -32,6 +32,7 @@ import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
 import { getDbRevKey, isDatabaseInitialized, query } from '@db/database';
 import { getAirframeLayoutByRegistration, upsertAirframeLayout } from '@db/repositories/airframeLayoutRepository';
+import { upsertAircraftTypeTemplate } from '@db/repositories/aircraftTypeTemplateRepository';
 import { getAircraftConfig, getAvailableAircraftTypes, getEditableTemplateTypes, getTemplateDisplayName } from '@data/aircraft';
 import { WGA_FLEET } from '@data/operators';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
@@ -924,14 +925,17 @@ const TypeTemplatesPanel: React.FC = () => {
     onConfirm: () => void;
   } | null>(null);
 
-  // Load only the editable templates (not aliases)
+  // Load templates from database (with code file fallback)
   useEffect(() => {
     const editableTypes = getEditableTemplateTypes();
     const loaded: Record<string, AircraftConfig> = {};
+    
+    // getAircraftConfig now checks database first, then code
     for (const type of editableTypes) {
       const config = getAircraftConfig(type);
       if (config) loaded[type] = config;
     }
+    
     setTemplates(loaded);
     if (!selectedTemplate && editableTypes.length > 0) {
       setSelectedTemplate(editableTypes[0]!);
@@ -1003,14 +1007,34 @@ const TypeTemplatesPanel: React.FC = () => {
       onConfirm: () => {
         try {
           setSaveStatus({ state: 'saving' });
-          // In production, this would save to the database via aircraftTypeTemplateRepository
-          // For now, we'll just update the in-memory templates
-          setTemplates(prev => ({ ...prev, [selectedTemplate]: editedTemplate }));
+          
+          if (!isDatabaseInitialized()) {
+            setSaveStatus({ state: 'error', message: 'Database not ready' });
+            setPasswordPrompt(null);
+            return;
+          }
+
+          // Save to database
+          const saved = upsertAircraftTypeTemplate({
+            typeCode: selectedTemplate,
+            displayName: getTemplateDisplayName(selectedTemplate),
+            config: editedTemplate,
+            isSystemDefault: false, // User-modified templates are not system defaults
+            userId: currentUser?.username ?? 'ADMIN',
+          });
+
+          // Update in-memory templates
+          setTemplates(prev => ({ ...prev, [selectedTemplate]: saved.config }));
+          
           setSaveStatus({ state: 'saved' });
           setTimeout(() => setSaveStatus({ state: 'idle' }), 3000);
           setPasswordPrompt(null);
-        } catch {
-          setSaveStatus({ state: 'error', message: 'Save failed' });
+
+          // Notify that templates have changed (triggers any listeners to reload)
+          window.dispatchEvent(new CustomEvent('lm:templateUpdated', { detail: { typeCode: selectedTemplate } }));
+        } catch (err) {
+          console.error('Template save failed:', err);
+          setSaveStatus({ state: 'error', message: 'Save failed - check console' });
           setPasswordPrompt(null);
         }
       },
