@@ -126,6 +126,12 @@ export interface AirframeLayout {
   version: number;
   /** Whether the record is intended to be immutable after setup (still editable by super_admin). */
   locked: boolean;
+  /**
+   * If true, this registration always uses the current template (no persistent overrides).
+   * Used for DEMO/test registrations that should reflect template changes.
+   * Real aircraft should have this set to false.
+   */
+  alwaysUseTemplate?: boolean;
   doors: AirframeDoor[];
   updatedAtUtc: string;
   /** User who last updated this layout (mechanic name, emp#, or super_admin username) */

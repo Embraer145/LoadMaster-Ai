@@ -797,17 +797,19 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
         }
 
         // Extract overrides from airframe layout
-        const oewOverrideKg = airframeLayout?.oewKg ?? null;
-        const positionArmOverrides = airframeLayout?.positionArms ?? null;
-        const stationArmOverrides = airframeLayout?.stationArms ?? null;
-        const positionConstraintOverrides = airframeLayout?.positionConstraints ?? null;
-        const limitsOverride = airframeLayout?.limits ?? null;
-        const cgLimitsOverride = airframeLayout?.cgLimits ?? null;
-        const macOverride = airframeLayout?.mac ?? null;
-        const fuelArmOverride = airframeLayout?.fuelArm ?? null;
-        const positionMaxWeightOverrides = airframeLayout?.positionMaxWeights ?? null;
-        const isSampleDataOverride = airframeLayout?.isSampleData ?? null;
-        const dataProvenanceOverride = airframeLayout?.dataProvenance ?? null;
+        // If alwaysUseTemplate=true (demo registrations), ignore saved overrides and use template as-is
+        const useTemplateOnly = airframeLayout?.alwaysUseTemplate ?? false;
+        const oewOverrideKg = useTemplateOnly ? null : (airframeLayout?.oewKg ?? null);
+        const positionArmOverrides = useTemplateOnly ? null : (airframeLayout?.positionArms ?? null);
+        const stationArmOverrides = useTemplateOnly ? null : (airframeLayout?.stationArms ?? null);
+        const positionConstraintOverrides = useTemplateOnly ? null : (airframeLayout?.positionConstraints ?? null);
+        const limitsOverride = useTemplateOnly ? null : (airframeLayout?.limits ?? null);
+        const cgLimitsOverride = useTemplateOnly ? null : (airframeLayout?.cgLimits ?? null);
+        const macOverride = useTemplateOnly ? null : (airframeLayout?.mac ?? null);
+        const fuelArmOverride = useTemplateOnly ? null : (airframeLayout?.fuelArm ?? null);
+        const positionMaxWeightOverrides = useTemplateOnly ? null : (airframeLayout?.positionMaxWeights ?? null);
+        const isSampleDataOverride = useTemplateOnly ? null : (airframeLayout?.isSampleData ?? null);
+        const dataProvenanceOverride = useTemplateOnly ? null : (airframeLayout?.dataProvenance ?? null);
 
         const nextConfig = typeChanged
           ? buildEffectiveAircraftConfig({
@@ -918,17 +920,19 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => {
       }
 
       // Extract overrides from airframe layout
-      const oewOverrideKg = airframeLayout?.oewKg ?? null;
-      const positionArmOverrides = airframeLayout?.positionArms ?? null;
-      const stationArmOverrides = airframeLayout?.stationArms ?? null;
-      const positionConstraintOverrides = airframeLayout?.positionConstraints ?? null;
-      const limitsOverride = airframeLayout?.limits ?? null;
-      const cgLimitsOverride = airframeLayout?.cgLimits ?? null;
-      const macOverride = airframeLayout?.mac ?? null;
-      const fuelArmOverride = airframeLayout?.fuelArm ?? null;
-      const positionMaxWeightOverrides = airframeLayout?.positionMaxWeights ?? null;
-      const isSampleDataOverride = airframeLayout?.isSampleData ?? null;
-      const dataProvenanceOverride = airframeLayout?.dataProvenance ?? null;
+      // If alwaysUseTemplate=true (demo registrations), ignore saved overrides and use template as-is
+      const useTemplateOnly = airframeLayout?.alwaysUseTemplate ?? false;
+      const oewOverrideKg = useTemplateOnly ? null : (airframeLayout?.oewKg ?? null);
+      const positionArmOverrides = useTemplateOnly ? null : (airframeLayout?.positionArms ?? null);
+      const stationArmOverrides = useTemplateOnly ? null : (airframeLayout?.stationArms ?? null);
+      const positionConstraintOverrides = useTemplateOnly ? null : (airframeLayout?.positionConstraints ?? null);
+      const limitsOverride = useTemplateOnly ? null : (airframeLayout?.limits ?? null);
+      const cgLimitsOverride = useTemplateOnly ? null : (airframeLayout?.cgLimits ?? null);
+      const macOverride = useTemplateOnly ? null : (airframeLayout?.mac ?? null);
+      const fuelArmOverride = useTemplateOnly ? null : (airframeLayout?.fuelArm ?? null);
+      const positionMaxWeightOverrides = useTemplateOnly ? null : (airframeLayout?.positionMaxWeights ?? null);
+      const isSampleDataOverride = useTemplateOnly ? null : (airframeLayout?.isSampleData ?? null);
+      const dataProvenanceOverride = useTemplateOnly ? null : (airframeLayout?.dataProvenance ?? null);
 
       if (!typeChanged) {
         // Type didn't change, but still apply overrides from airframe layout

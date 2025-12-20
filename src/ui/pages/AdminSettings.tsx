@@ -2078,13 +2078,27 @@ const AirframeLayoutsPanel: React.FC = () => {
           {/* Registration Info Banner */}
           {selectedReg && (
             <div className="w-full mt-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="bg-blue-600 px-3 py-1 rounded-md">
                   <div className="text-xs font-bold text-white">{selectedReg}</div>
                 </div>
                 <div className="text-xs text-slate-300">
                   Viewing configuration for this tail number
                 </div>
+                {editable.alwaysUseTemplate && (
+                  <div className="px-2 py-1 bg-amber-500/20 border border-amber-500/40 rounded">
+                    <div className="text-[10px] font-bold text-amber-300">
+                      🔗 TEMPLATE-LINKED (Always uses current template)
+                    </div>
+                  </div>
+                )}
+                {!editable.alwaysUseTemplate && selectedReg.startsWith('N') && (
+                  <div className="px-2 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded">
+                    <div className="text-[10px] font-bold text-emerald-300">
+                      ✈️ LIVE AIRCRAFT (Independent configuration)
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col items-end gap-1">
                 {editable.updatedAtUtc && (
