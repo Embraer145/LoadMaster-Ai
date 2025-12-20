@@ -277,7 +277,12 @@ export default function App() {
       try {
         await initDatabase();
         setDbReady(true);
-      } catch {
+      } catch (err) {
+        console.error('Database initialization failed:', err);
+        // Show error to user
+        if (err instanceof Error && err.message.includes('Migration failed')) {
+          alert(`⚠️ Database migration failed!\n\n${err.message}\n\nPlease check the console for details or contact support.`);
+        }
         // Prototype: DB init can fail (e.g., wasm fetch). App should still run.
         return;
       }

@@ -1014,17 +1014,6 @@ const TypeTemplatesPanel: React.FC = () => {
             return;
           }
 
-          // Ensure the table exists (in case of old database)
-          try {
-            query('SELECT COUNT(*) FROM aircraft_type_templates');
-          } catch {
-            // Table doesn't exist - run schema migration
-            console.warn('aircraft_type_templates table missing - creating it');
-            const { SCHEMA_SQL } = require('@db/schema');
-            const { getDatabase } = require('@db/database');
-            getDatabase().run(SCHEMA_SQL);
-          }
-
           // Save to database
           const saved = upsertAircraftTypeTemplate({
             typeCode: selectedTemplate,

@@ -62,9 +62,27 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
     db = new sqlJs.Database();
   }
 
-  // Ensure schema objects exist (idempotent). This also advances schema_version.
-  // NOTE: This is our lightweight migration mechanism for local sql.js persistence.
-  db.run(SCHEMA_SQL);
+  // Run migrations to bring database up to current schema version
+  const { runMigrations, getCurrentSchemaVersion } = await import('./migrations');
+  const beforeVersion = getCurrentSchemaVersion(db);
+  
+  if (beforeVersion === 0) {
+    // Brand new database - create base schema first
+    debugLog('Creating base schema for new database');
+    db.run(SCHEMA_SQL);
+  }
+  
+  // Run any pending migrations
+  const migrationResult = runMigrations(db);
+  
+  if (migrationResult.errors.length > 0) {
+    console.error('❌ Database migrations failed:', migrationResult.errors);
+    throw new Error(`Migration failed at version ${migrationResult.errors[0]?.version}`);
+  }
+  
+  if (migrationResult.applied.length > 0) {
+    debugLog(`Migrations applied: v${beforeVersion} → v${getCurrentSchemaVersion(db)}`);
+  }
 
   // Seed initial data only on brand-new DBs (best-effort).
   if (!savedData) {
@@ -74,7 +92,8 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
   // Persist to storage after init/seed/migrations
   saveToStorage(db);
 
-  debugLog(`Database initialized (schema v${SCHEMA_VERSION})`);
+  const finalVersion = getCurrentSchemaVersion(db);
+  debugLog(`Database initialized (schema v${finalVersion})`);
   return db;
 }
 
@@ -376,14 +395,8 @@ async function seedInitialData(database: SqlJsDatabase): Promise<void> {
     );
   }
 
-  // Seed aircraft type templates (master definitions)
-  try {
-    const { seedTemplatesFromCode } = await import('./seedTemplates');
-    seedTemplatesFromCode();
-    debugLog('Aircraft type templates seeded');
-  } catch (err) {
-    debugLog('Template seeding skipped (best-effort):', err);
-  }
+  // NOTE: Aircraft type templates are now seeded via migration v3 (not here)
+  // This ensures templates are seeded exactly once when the table is created
 
   debugLog('Initial data seeded');
 }
