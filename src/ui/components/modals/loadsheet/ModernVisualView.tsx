@@ -32,7 +32,7 @@ export const ModernVisualView: React.FC<ModernVisualViewProps> = ({
   blockFuelKg,
   taxiFuelKg,
   tripBurnKg,
-  operatorCode = 'WGA',
+  operatorCode: _operatorCode = 'WGA',
 }) => {
   // Calculate key metrics
   const takeoffFuelKg = Math.max(0, blockFuelKg - taxiFuelKg);
@@ -41,9 +41,7 @@ export const ModernVisualView: React.FC<ModernVisualViewProps> = ({
   const totalPositions = positions.length;
   
   // Calculate utilization percentages
-  const zfwUtilization = (physics.zfw / aircraftConfig.limits.MZFW) * 100;
   const towUtilization = (physics.weight / aircraftConfig.limits.MTOW) * 100;
-  const lwUtilization = (physics.lw / aircraftConfig.limits.MLW) * 100;
   
   // Calculate CG margin
   const cgMargin = Math.min(
@@ -150,11 +148,11 @@ export const ModernVisualView: React.FC<ModernVisualViewProps> = ({
           <h3 className="text-lg font-bold text-slate-900 mb-4">CG Position</h3>
           <div className="flex items-center justify-center">
             <Gauge
-              value={cgMarginPercent}
-              max={100}
-              label={`${physics.towCG.toFixed(1)}% MAC`}
-              size={180}
-              color={cgMargin < 2 ? 'red' : cgMargin < 5 ? 'amber' : 'emerald'}
+              label="CG MARGIN"
+              value={physics.towCG.toFixed(1)}
+              unit="% MAC"
+              max={aircraftConfig.limits.aftCGLimit}
+              danger={cgMargin < 2}
             />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -371,7 +369,7 @@ function StatusBadge({ ok }: { ok: boolean }) {
 }
 
 function CargoDistributionDiagram({ 
-  aircraftConfig, 
+  aircraftConfig: _aircraftConfig, 
   positions 
 }: { 
   aircraftConfig: AircraftConfig;

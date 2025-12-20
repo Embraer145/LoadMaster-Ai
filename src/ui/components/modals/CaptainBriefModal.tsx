@@ -47,8 +47,6 @@ export const CaptainBriefModal: React.FC<CaptainBriefModalProps> = ({
 
   const handlePrint = () => window.print();
 
-  const takeoffFuelKg = Math.max(0, blockFuelKg - taxiFuelKg);
-
   return (
     <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[110] flex items-center justify-center p-4 print:p-0 print:bg-white">
       <div className="relative w-full max-w-[1200px] max-h-[92vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col print:shadow-none print:border-slate-300 print:rounded-none print:bg-white print:max-h-none print:max-w-none">

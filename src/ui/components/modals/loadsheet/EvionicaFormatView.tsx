@@ -36,7 +36,7 @@ export const EvionicaFormatView: React.FC<EvionicaFormatViewProps> = ({
   crewCount,
   crewWeightKg,
   serviceAdjustmentsKg,
-  operatorCode = 'WGA',
+  operatorCode: _operatorCode = 'WGA',
 }) => {
   // Calculate cargo totals
   const cargoWeight = positions.reduce((sum, p) => sum + (p.content?.weight ?? 0), 0);
@@ -149,9 +149,6 @@ export const EvionicaFormatView: React.FC<EvionicaFormatViewProps> = ({
           <div>
             <div className="mb-1">MAIN DECK                    LOWER DECK</div>
             {(() => {
-              // Get paired positions
-              const pairs: Array<{left: LoadedPosition | null, right: LoadedPosition | null, lower: LoadedPosition | null}> = [];
-              
               // Group main deck L/R pairs
               const grouped = new Map<string, {l: LoadedPosition | null, r: LoadedPosition | null}>();
               for (const p of mainDeckPositions) {

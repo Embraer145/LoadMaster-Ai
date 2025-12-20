@@ -23,7 +23,7 @@ interface SimplePlanViewProps {
 }
 
 export const SimplePlanView: React.FC<SimplePlanViewProps> = ({
-  aircraftConfig,
+  aircraftConfig: _aircraftConfig,
   positions,
   widthPx = FUSELAGE_CANVAS_PX,
 }) => {
