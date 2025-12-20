@@ -35,6 +35,8 @@ import { useSettingsStore } from '@core/settings';
 import { checkCargoPlacement } from '@core/uld';
 import { logAudit } from '@/db/repositories/auditRepository';
 import { getAirframeLayoutByRegistration } from '@/db/repositories/airframeLayoutRepository';
+import { getAircraftTypeTemplate } from '@/db/repositories/aircraftTypeTemplateRepository';
+import { isDatabaseInitialized } from '@/db/database';
 
 function safeAudit(input: Parameters<typeof logAudit>[0]) {
   try {
@@ -606,6 +608,27 @@ function withProvenanceOverrides(
   return next;
 }
 
+/**
+ * Get aircraft config with database priority
+ * Checks database for saved templates first, falls back to code registry
+ */
+function getAircraftConfigWithDbCheck(typeCode: string, fallback: AircraftConfig): AircraftConfig {
+  // Try database first (user-edited templates)
+  try {
+    if (isDatabaseInitialized()) {
+      const dbTemplate = getAircraftTypeTemplate(typeCode);
+      if (dbTemplate?.config) {
+        return dbTemplate.config;
+      }
+    }
+  } catch (err) {
+    console.warn(`Database template lookup failed for ${typeCode}:`, err);
+  }
+  
+  // Fallback to code registry or provided fallback
+  return getAircraftConfig(typeCode) ?? fallback;
+}
+
 function buildEffectiveAircraftConfig(input: {
   type: string;
   fallback: AircraftConfig;
@@ -621,7 +644,7 @@ function buildEffectiveAircraftConfig(input: {
   isSampleDataOverride: boolean | null;
   dataProvenanceOverride: AircraftConfig['dataProvenance'] | null;
 }): AircraftConfig {
-  const base = getAircraftConfig(input.type) ?? input.fallback;
+  const base = getAircraftConfigWithDbCheck(input.type, input.fallback);
   const withLimits = withLimitsOverride(base, input.limitsOverride);
   const withOew = withOewOverride(withLimits, input.oewOverrideKg);
   const withCg = withCgLimitsOverride(withOew, input.cgLimitsOverride);

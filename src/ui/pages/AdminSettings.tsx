@@ -32,7 +32,7 @@ import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
 import { getDbRevKey, isDatabaseInitialized, query } from '@db/database';
 import { getAirframeLayoutByRegistration, upsertAirframeLayout } from '@db/repositories/airframeLayoutRepository';
-import { upsertAircraftTypeTemplate } from '@db/repositories/aircraftTypeTemplateRepository';
+import { upsertAircraftTypeTemplate, getAircraftTypeTemplate } from '@db/repositories/aircraftTypeTemplateRepository';
 import { getAircraftConfig, getAvailableAircraftTypes, getEditableTemplateTypes, getTemplateDisplayName } from '@data/aircraft';
 import { WGA_FLEET } from '@data/operators';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
@@ -931,10 +931,23 @@ const TypeTemplatesPanel: React.FC = () => {
     const editableTypes = getEditableTemplateTypes();
     const loaded: Record<string, AircraftConfig> = {};
     
-    // getAircraftConfig now checks database first, then code
+    // Load from database first, fallback to code
     for (const type of editableTypes) {
-      const config = getAircraftConfig(type);
-      if (config) loaded[type] = config;
+      try {
+        if (isDatabaseInitialized()) {
+          const dbTemplate = getAircraftTypeTemplate(type);
+          if (dbTemplate?.config) {
+            loaded[type] = dbTemplate.config;
+            continue;
+          }
+        }
+      } catch {
+        // Fall through to code fallback
+      }
+      
+      // Fallback to code registry
+      const codeConfig = getAircraftConfig(type);
+      if (codeConfig) loaded[type] = codeConfig;
     }
     
     setTemplates(loaded);
@@ -949,6 +962,29 @@ const TypeTemplatesPanel: React.FC = () => {
       setEditedTemplate(JSON.parse(JSON.stringify(templates[selectedTemplate])));
     }
   }, [selectedTemplate, templates]);
+
+  // Reload templates when they're updated
+  useEffect(() => {
+    const handleTemplateUpdate = (event: CustomEvent) => {
+      const updatedType = event.detail?.typeCode;
+      if (updatedType) {
+        // Reload the specific template from database
+        try {
+          if (isDatabaseInitialized()) {
+            const dbTemplate = getAircraftTypeTemplate(updatedType);
+            if (dbTemplate?.config) {
+              setTemplates(prev => ({ ...prev, [updatedType]: dbTemplate.config }));
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to reload template after update:', err);
+        }
+      }
+    };
+    
+    window.addEventListener('lm:templateUpdated', handleTemplateUpdate as EventListener);
+    return () => window.removeEventListener('lm:templateUpdated', handleTemplateUpdate as EventListener);
+  }, []);
 
   const updatePosition = (posId: string, field: 'arm' | 'maxWeight', value: number) => {
     if (!editedTemplate) return;

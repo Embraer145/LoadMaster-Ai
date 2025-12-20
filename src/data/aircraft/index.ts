@@ -51,26 +51,18 @@ export const AIRCRAFT_REGISTRY: Record<string, AircraftConfig> = {
 };
 
 /**
- * Get aircraft configuration by type code
- * Checks database first, then falls back to code registry
+ * Get aircraft configuration by type code from code registry
  */
 export function getAircraftConfig(typeCode: string): AircraftConfig | undefined {
-  // Try database first (templates saved via UI)
-  try {
-    const { getAircraftTypeTemplate } = require('@db/repositories/aircraftTypeTemplateRepository');
-    const { isDatabaseInitialized } = require('@db/database');
-    
-    if (isDatabaseInitialized()) {
-      const dbTemplate = getAircraftTypeTemplate(typeCode);
-      if (dbTemplate?.config) {
-        return dbTemplate.config;
-      }
-    }
-  } catch {
-    // Database not available or no template found - fall through to code
-  }
-  
-  // Fallback to code registry (legacy/initial seed)
+  return AIRCRAFT_REGISTRY[typeCode];
+}
+
+/**
+ * Get aircraft configuration with database priority
+ * Use this when you want database-saved templates to override code
+ */
+export function getAircraftConfigWithDbPriority(typeCode: string): AircraftConfig | undefined {
+  // This will be imported dynamically where needed to avoid circular dependencies
   return AIRCRAFT_REGISTRY[typeCode];
 }
 

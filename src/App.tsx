@@ -121,14 +121,27 @@ export default function App() {
   const [airframeLayoutRev, setAirframeLayoutRev] = useState(0);
 
   useEffect(() => {
-    const onUpdated = () => {
+    const onLayoutUpdated = () => {
       // Any airframe layout save should refresh the cached read.
       // If a different reg was updated, harmless to refresh.
       setAirframeLayoutRev((n) => n + 1);
     };
-    window.addEventListener('lm:airframeLayoutUpdated', onUpdated);
-    return () => window.removeEventListener('lm:airframeLayoutUpdated', onUpdated);
-  }, []);
+    const onTemplateUpdated = () => {
+      // Template updated - if current aircraft uses that template, reload
+      // For template-linked aircraft (demos), this triggers reload
+      setAirframeLayoutRev((n) => n + 1);
+      // Force aircraft config reload
+      if (flight?.registration) {
+        setFlight(flight); // Trigger reload with current flight
+      }
+    };
+    window.addEventListener('lm:airframeLayoutUpdated', onLayoutUpdated);
+    window.addEventListener('lm:templateUpdated', onTemplateUpdated);
+    return () => {
+      window.removeEventListener('lm:airframeLayoutUpdated', onLayoutUpdated);
+      window.removeEventListener('lm:templateUpdated', onTemplateUpdated);
+    };
+  }, [flight, setFlight]);
 
   const airframeLayout = useMemo(() => {
     try {
