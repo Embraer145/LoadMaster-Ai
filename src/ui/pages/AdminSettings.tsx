@@ -914,6 +914,7 @@ function buildDefaultLabels(input: {
 }
 
 const TypeTemplatesPanel: React.FC = () => {
+  const { currentUser } = useAuthStore();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('B747-400F-ALPHABETIC');
   const [templates, setTemplates] = useState<Record<string, AircraftConfig>>({});
   const [editedTemplate, setEditedTemplate] = useState<AircraftConfig | null>(null);
