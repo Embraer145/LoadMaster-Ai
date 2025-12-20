@@ -21,7 +21,7 @@ export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     description: 'Initial schema - operators, aircraft_configs, fleet, flight_plans, load_plans, audit_log',
-    up: (db) => {
+    up: () => {
       // v1 was the initial schema (already created if database exists)
       // This is a no-op placeholder for tracking purposes
     },

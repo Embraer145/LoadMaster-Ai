@@ -6,7 +6,7 @@
  */
 
 import initSqlJs, { Database as SqlJsDatabase, SqlValue, BindParams } from 'sql.js';
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+import { SCHEMA_SQL } from './schema';
 import { env, debugLog } from '../config/env';
 
 /**
