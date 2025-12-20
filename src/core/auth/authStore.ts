@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { UserProfile } from './types';
+import type { UserProfile, UserRole } from './types';
 import { logAudit } from '../../db/repositories/auditRepository';
 import { isDatabaseInitialized } from '../../db/database';
 

@@ -26,7 +26,7 @@ import { useSettingsStore, useSettings } from '@core/settings';
 import { env } from '@/config/env';
 import { evaluateCompliance } from '@core/compliance';
 import { useAuthStore } from '@core/auth';
-import type { AirframeLabelPreset, AirframeLayout, AirframeStationOverride, DoorKind, DoorSide } from '@core/types';
+import type { AirframeLabelPreset, AirframeLayout, AirframeStationOverride, DoorKind, DoorSide, AircraftConfig, AircraftLimits, MACData } from '@core/types';
 import type { OptimizationMode } from '@core/optimizer/types';
 import { WAREHOUSE_SORT_LABEL, WAREHOUSE_SORT_MODES } from '@core/warehouse';
 import { useLoadPlanStore } from '@store/loadPlanStore';
@@ -913,7 +913,6 @@ function buildDefaultLabels(input: {
 }
 
 const TypeTemplatesPanel: React.FC = () => {
-  const { currentUser } = useAuthStore();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('B747-400F-ALPHABETIC');
   const [templates, setTemplates] = useState<Record<string, AircraftConfig>>({});
   const [editedTemplate, setEditedTemplate] = useState<AircraftConfig | null>(null);

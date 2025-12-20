@@ -12,12 +12,12 @@ import { B747_400F_NUMERIC_CONFIG } from './b747-400f-numeric';
 import { B747_400F_UPS_CONFIG } from './b747-400f-ups';
 import { B747_400F_CUSTOM_CONFIG } from './b747-400f-custom';
 
-// Re-export all aircraft configs
-export * from './b747-400f';
-export * from './b747-400f-alphabetic';
-export * from './b747-400f-numeric';
-export * from './b747-400f-ups';
-export * from './b747-400f-custom';
+// Re-export only the config objects (avoid duplicate helper function exports)
+export { B747_400F_CONFIG } from './b747-400f';
+export { B747_400F_ALPHABETIC_CONFIG } from './b747-400f-alphabetic';
+export { B747_400F_NUMERIC_CONFIG } from './b747-400f-numeric';
+export { B747_400F_UPS_CONFIG } from './b747-400f-ups';
+export { B747_400F_CUSTOM_CONFIG } from './b747-400f-custom';
 
 /**
  * Aircraft Configuration Registry

@@ -10,7 +10,6 @@ import type {
   AircraftConfig, 
   PositionDefinition,
   DeckType,
-  PositionType,
   LowerHoldGroup,
   StationDefinition,
   PositionConstraint,

@@ -10,8 +10,6 @@ import type {
   AircraftConfig, 
   PositionDefinition,
   DeckType,
-  PositionType,
-  LowerHoldGroup,
   StationDefinition,
 } from '@core/types';
 
@@ -106,9 +104,9 @@ const STATIONS: StationDefinition[] = [
   { id: 'RIDER_4', label: 'Rider 4', arm: 380, category: 'rider' },
   { id: 'RIDER_5', label: 'Rider 5', arm: 390, category: 'rider' },
   { id: 'RIDER_6', label: 'Rider 6', arm: 400, category: 'rider' },
-  { id: 'ITEMS_FWD', label: 'Items (FWD)', arm: 500, category: 'item' },
-  { id: 'ITEMS_AFT', label: 'Items (AFT)', arm: 1500, category: 'item' },
-  { id: 'ITEMS_OTHER', label: 'Items (Other)', arm: 1000, category: 'item' },
+  { id: 'ITEMS_FWD', label: 'Items (FWD)', arm: 500, category: 'items' },
+  { id: 'ITEMS_AFT', label: 'Items (AFT)', arm: 1500, category: 'items' },
+  { id: 'ITEMS_OTHER', label: 'Items (Other)', arm: 1000, category: 'items' },
 ];
 
 /**
