@@ -1185,114 +1185,10 @@ const TypeTemplatesPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Deck Positions */}
-      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
-        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
-          Main Deck Positions
-        </div>
-        <div className="text-xs text-slate-400 mb-3">
-          Showing {editedTemplate.positions.filter(p => p.deck === 'MAIN').length} main deck cargo positions.
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
-              <tr>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
-                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
-                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {editedTemplate.positions.filter(p => p.deck === 'MAIN').map((pos) => (
-                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
-                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
-                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
-                  <td className="py-2 px-3 text-right">
-                    <input
-                      type="number"
-                      value={pos.arm}
-                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
-                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
-                    />
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    <input
-                      type="number"
-                      value={pos.maxWeight}
-                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
-                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Lower Deck Positions */}
-      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
-        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
-          Lower Deck Positions (Belly Holds)
-        </div>
-        <div className="text-xs text-slate-400 mb-3">
-          Showing {editedTemplate.positions.filter(p => p.deck === 'LOWER').length} lower deck cargo positions.
-        </div>
-        <div className="max-h-64 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
-              <tr>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
-                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Group</th>
-                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
-                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {editedTemplate.positions.filter(p => p.deck === 'LOWER').map((pos) => (
-                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
-                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
-                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
-                  <td className="py-2 px-3 text-slate-400 text-xs">
-                    {pos.group && (
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        pos.group === 'FWD' ? 'bg-cyan-600/20 text-cyan-300' :
-                        pos.group === 'AFT' ? 'bg-orange-600/20 text-orange-300' :
-                        'bg-red-600/20 text-red-300'
-                      }`}>
-                        {pos.group}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    <input
-                      type="number"
-                      value={pos.arm}
-                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
-                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
-                    />
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    <input
-                      type="number"
-                      value={pos.maxWeight}
-                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
-                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* Upper Deck Stations (Non-Cargo) */}
       <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
-          Upper Deck Stations (Non-Cargo W&B)
+          👨‍✈️ Upper Deck Stations (Non-Cargo W&B)
         </div>
         <div className="text-xs text-slate-400 mb-3">
           Crew, jumpseats, riders, and items/equipment. Showing {editedTemplate.stations?.length ?? 0} stations.
@@ -1349,6 +1245,110 @@ const TypeTemplatesPanel: React.FC = () => {
         ) : (
           <div className="text-xs text-slate-500 italic">No stations defined for this template</div>
         )}
+      </div>
+
+      {/* Main Deck Positions */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          📦 Main Deck Positions
+        </div>
+        <div className="text-xs text-slate-400 mb-3">
+          Upper cargo deck. Showing {editedTemplate.positions.filter(p => p.deck === 'MAIN').length} positions.
+        </div>
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+              <tr>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {editedTemplate.positions.filter(p => p.deck === 'MAIN').map((pos) => (
+                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.arm}
+                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.maxWeight}
+                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Lower Deck Positions */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          📦 Lower Deck Positions (Belly Holds)
+        </div>
+        <div className="text-xs text-slate-400 mb-3">
+          Belly cargo holds. Showing {editedTemplate.positions.filter(p => p.deck === 'LOWER').length} positions.
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+              <tr>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Position ID</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Type</th>
+                <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Group</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
+                <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {editedTemplate.positions.filter(p => p.deck === 'LOWER').map((pos) => (
+                <tr key={pos.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                  <td className="py-2 px-3 font-mono text-white">{pos.id}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">{pos.type}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">
+                    {pos.group && (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        pos.group === 'FWD' ? 'bg-cyan-600/20 text-cyan-300' :
+                        pos.group === 'AFT' ? 'bg-orange-600/20 text-orange-300' :
+                        'bg-red-600/20 text-red-300'
+                      }`}>
+                        {pos.group}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.arm}
+                      onChange={(e) => updatePosition(pos.id, 'arm', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      value={pos.maxWeight}
+                      onChange={(e) => updatePosition(pos.id, 'maxWeight', Number(e.target.value))}
+                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Password Prompt */}
@@ -2437,9 +2437,9 @@ const AirframeLayoutsPanel: React.FC = () => {
           These arms drive the actual W&B math. Keep them updated per aircraft report when maintenance updates weights/config.
         </div>
 
-        {/* Non-cargo stations */}
+        {/* Upper Deck Stations (Non-cargo) */}
         <div className="mt-3">
-          <div className="text-xs text-slate-300 font-bold">Stations (Crew / Items)</div>
+          <div className="text-xs text-slate-300 font-bold">👨‍✈️ Upper Deck Stations (Crew / Jumpseats / Items)</div>
           <div className="mt-2 max-h-[220px] overflow-y-auto border border-slate-800 rounded-lg">
             <div className="grid grid-cols-[160px,1fr,150px,80px,90px,120px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
               <div>Station</div>
@@ -2498,37 +2498,18 @@ const AirframeLayoutsPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Cargo positions + constraints (merged) */}
+        {/* Main Deck Cargo Positions */}
         <div className="mt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs text-slate-300 font-bold">Cargo Positions</div>
+              <div className="text-xs text-slate-300 font-bold">📦 Main Deck Cargo Positions</div>
               <div className="text-[10px] text-slate-500 mt-0.5">
-                Label + arm + per-slot max height (envelope). Used for plan-view sizing and placement checks.
+                Upper cargo deck positions. Label + arm + max weight + height constraints.
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const ok = window.confirm(
-                  `Seed max heights from the current aircraft type into ${selectedReg}?\n\nThis overwrites the per-tail max-height values for ALL positions.`
-                );
-                if (!ok) return;
-                const seed = Object.fromEntries((typeConfig?.positions ?? []).map((p) => [p.id, (p as any).constraints ?? {}]));
-                setLayoutsByReg((prev) => {
-                  const cur = prev[selectedReg] ?? editable;
-                  return { ...prev, [selectedReg]: { ...cur, positionConstraints: seed, updatedAtUtc: new Date().toISOString() } };
-                });
-              }}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700"
-              title="Overwrite tail max heights with template seed"
-            >
-              Seed max heights
-            </button>
           </div>
-          <div className="mt-2 max-h-[260px] overflow-y-auto border border-slate-800 rounded-lg">
-            <div className="grid grid-cols-[70px,90px,150px,1fr,120px,140px,130px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">
-              <div>Deck</div>
+          <div className="mt-2 max-h-[280px] overflow-y-auto border border-slate-800 rounded-lg">
+            <div className="grid grid-cols-[90px,150px,1fr,120px,140px,130px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800 bg-slate-900">
               <div>Pos</div>
               <div>Display label</div>
               <div>Type</div>
@@ -2536,9 +2517,8 @@ const AirframeLayoutsPanel: React.FC = () => {
               <div className="text-right">Max Wt (kg)</div>
               <div className="text-right">Max Height (in)</div>
             </div>
-            {(typeConfig?.positions ?? []).map((p) => (
-              <div key={p.id} className="grid grid-cols-[70px,90px,150px,1fr,120px,140px,130px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0">
-                <div className="text-[11px] text-slate-400 font-bold">{p.deck}</div>
+            {(typeConfig?.positions ?? []).filter(p => p.deck === 'MAIN').map((p) => (
+              <div key={p.id} className="grid grid-cols-[90px,150px,1fr,120px,140px,130px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0 hover:bg-slate-800/30">
                 <div className="text-sm font-mono text-slate-200">{p.id}</div>
                 <input
                   type="text"
@@ -2551,6 +2531,118 @@ const AirframeLayoutsPanel: React.FC = () => {
                 <input
                   type="number"
                   value={typeof editable.positionArms?.[p.id] === 'number' ? editable.positionArms![p.id] : ''}
+                  placeholder={String(p.arm)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setPositionArm(p.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+                <input
+                  type="number"
+                  value={typeof editable.positionMaxWeights?.[p.id] === 'number' ? editable.positionMaxWeights![p.id] : ''}
+                  placeholder={String(p.maxWeight)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setPositionMaxWeight(p.id, Number.isFinite(n as number) ? (n as number) : undefined);
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+                <input
+                  type="number"
+                  value={typeof (editable as any).positionConstraints?.[p.id]?.maxHeightIn === 'number' ? (editable as any).positionConstraints[p.id].maxHeightIn : ''}
+                  placeholder={(p as any).constraints?.maxHeightIn ? String((p as any).constraints.maxHeightIn) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? undefined : Number(raw);
+                    setLayoutsByReg((prev) => {
+                      const cur = prev[selectedReg] ?? editable;
+                      const positionConstraints = { ...((cur as any).positionConstraints ?? {}) };
+                      positionConstraints[p.id] = {
+                        ...(positionConstraints[p.id] ?? {}),
+                        maxHeightIn: Number.isFinite(n as number) ? (n as number) : undefined,
+                      };
+                      return { ...prev, [selectedReg]: { ...cur, positionConstraints, updatedAtUtc: new Date().toISOString() } };
+                    });
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white w-full text-right"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Lower Deck Cargo Positions */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs text-slate-300 font-bold">📦 Lower Deck Cargo Positions (Belly)</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Belly hold cargo positions. Forward, Aft, and Bulk compartments.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const ok = window.confirm(
+                  `Seed lower deck max heights from template into ${selectedReg}?`
+                );
+                if (!ok) return;
+                const seed = Object.fromEntries(
+                  (typeConfig?.positions ?? [])
+                    .filter(p => p.deck === 'LOWER')
+                    .map((p) => [p.id, (p as any).constraints ?? {}])
+                );
+                setLayoutsByReg((prev) => {
+                  const cur = prev[selectedReg] ?? editable;
+                  const positionConstraints = { ...((cur as any).positionConstraints ?? {}), ...seed };
+                  return { ...prev, [selectedReg]: { ...cur, positionConstraints, updatedAtUtc: new Date().toISOString() } };
+                });
+              }}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700"
+              title="Seed lower deck max heights from template"
+            >
+              Seed heights
+            </button>
+          </div>
+          <div className="mt-2 max-h-[200px] overflow-y-auto border border-slate-800 rounded-lg">
+            <div className="grid grid-cols-[90px,150px,80px,1fr,120px,140px,130px] gap-2 p-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800 bg-slate-900">
+              <div>Pos</div>
+              <div>Display label</div>
+              <div>Group</div>
+              <div>Type</div>
+              <div className="text-right">Arm (in)</div>
+              <div className="text-right">Max Wt (kg)</div>
+              <div className="text-right">Max Height (in)</div>
+            </div>
+            {(typeConfig?.positions ?? []).filter(p => p.deck === 'LOWER').map((p) => (
+              <div key={p.id} className="grid grid-cols-[90px,150px,80px,1fr,120px,140px,130px] gap-2 p-2 items-center border-b border-slate-800 last:border-b-0 hover:bg-slate-800/30">
+                <div className="text-sm font-mono text-slate-200">{p.id}</div>
+                <input
+                  type="text"
+                  value={editable.positionLabels?.[p.id] ?? ''}
+                  placeholder={p.id}
+                  onChange={(e) => setPositionLabel(p.id, e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-full"
+                />
+                <div className="text-[11px]">
+                  {p.group && (
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                      p.group === 'FWD' ? 'bg-cyan-600/20 text-cyan-300' :
+                      p.group === 'AFT' ? 'bg-orange-600/20 text-orange-300' :
+                      'bg-red-600/20 text-red-300'
+                    }`}>
+                      {p.group}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-500 truncate">{p.type}</div>
+                <input
+                  type="number"
+                  value={typeof editable.positionArms?.[p.id] === 'number' ? editable.positionArms![p.id] : ''}
+                  placeholder={String(p.arm)}
                   onChange={(e) => {
                     const raw = e.target.value;
                     const n = raw === '' ? undefined : Number(raw);
