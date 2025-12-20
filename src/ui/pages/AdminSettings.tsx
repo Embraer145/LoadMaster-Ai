@@ -984,6 +984,16 @@ const TypeTemplatesPanel: React.FC = () => {
     setEditedTemplate({ ...editedTemplate, fuelArm: value });
   };
 
+  const updateStation = (stationId: string, field: 'arm' | 'label', value: string | number) => {
+    if (!editedTemplate) return;
+    setEditedTemplate({
+      ...editedTemplate,
+      stations: (editedTemplate.stations ?? []).map(s =>
+        s.id === stationId ? { ...s, [field]: value } : s
+      ),
+    });
+  };
+
   const saveTemplate = () => {
     if (!editedTemplate) return;
     setPasswordPrompt({
@@ -1221,6 +1231,68 @@ const TypeTemplatesPanel: React.FC = () => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Station Arms (Crew, Jumpseats, Riders, Items) */}
+      <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/30 mb-4">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">
+          Station Arms (Crew/Jumpseats/Riders/Items)
+        </div>
+        <div className="text-xs text-slate-400 mb-3">
+          Non-cargo weight & balance stations. Showing {editedTemplate.stations?.length ?? 0} stations.
+        </div>
+        {(editedTemplate.stations?.length ?? 0) > 0 ? (
+          <div className="max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+                <tr>
+                  <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Station ID</th>
+                  <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Label</th>
+                  <th className="text-left py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Category</th>
+                  <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Arm (in)</th>
+                  <th className="text-right py-2 px-3 text-[10px] text-slate-500 font-bold uppercase">Max Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {editedTemplate.stations.map((station) => (
+                  <tr key={station.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                    <td className="py-2 px-3 font-mono text-white text-xs">{station.id}</td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="text"
+                        value={station.label}
+                        onChange={(e) => updateStation(station.id, 'label', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                      />
+                    </td>
+                    <td className="py-2 px-3 text-slate-400 text-xs">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        station.category === 'crew' ? 'bg-blue-600/20 text-blue-300' :
+                        station.category === 'rider' ? 'bg-violet-600/20 text-violet-300' :
+                        'bg-amber-600/20 text-amber-300'
+                      }`}>
+                        {station.category}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <input
+                        type="number"
+                        value={station.arm}
+                        onChange={(e) => updateStation(station.id, 'arm', Number(e.target.value))}
+                        className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white text-right"
+                      />
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-400 text-xs">
+                      {station.maxCount ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500 italic">No stations defined for this template</div>
+        )}
       </div>
 
       {/* Password Prompt */}
