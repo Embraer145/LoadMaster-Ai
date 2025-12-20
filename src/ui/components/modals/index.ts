@@ -9,4 +9,5 @@ export * from './CaptainBriefModal';
 export * from './ProfileModal';
 export * from './ProofPackModal';
 export * from './AirframeInfoModal';
+export * from './PasswordPromptModal';
 

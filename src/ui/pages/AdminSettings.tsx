@@ -35,8 +35,9 @@ import { getAirframeLayoutByRegistration, upsertAirframeLayout } from '@db/repos
 import { getAircraftConfig, getAvailableAircraftTypes } from '@data/aircraft';
 import { WGA_FLEET } from '@data/operators';
 import { EnhancedUnloadSettingsPanel } from './UnloadSettingsPanel';
+import { PasswordPromptModal } from '@ui/components/modals';
 
-type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display' | 'compliance' | 'airframeLayouts';
+type SettingsTab = 'general' | 'standardWeights' | 'optimization' | 'dg' | 'unload' | 'display' | 'compliance' | 'airframeLayouts' | 'typeTemplates';
 
 interface AdminSettingsProps {
   onClose: () => void;
@@ -68,6 +69,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ onClose }) => {
     { id: 'unload', label: 'Unload Efficiency', icon: <Truck size={16} /> },
     { id: 'display', label: 'Display', icon: <Monitor size={16} /> },
     { id: 'compliance', label: 'Compliance', icon: <ShieldCheck size={16} /> },
+    { id: 'typeTemplates', label: 'Type Templates', icon: <Shield size={16} />, superOnly: true },
     { id: 'airframeLayouts', label: 'Airframe Layouts', icon: <DoorOpen size={16} />, superOnly: true },
   ];
 
@@ -901,6 +903,14 @@ const AirframeLayoutsPanel: React.FC = () => {
     state: 'idle',
   });
   const lastSavedAtRef = useRef<string | null>(null);
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const { currentUser } = useAuthStore();
+  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   useEffect(() => {
     try {
@@ -1566,35 +1576,94 @@ const AirframeLayoutsPanel: React.FC = () => {
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="flex flex-col">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Labels preset</div>
-                <select
-                  value={editable.labelPreset ?? defaultPresetForType(selectedType)}
-                  onChange={(e) => applyLabelPresetLocal(e.target.value as AirframeLabelPreset)}
-                  disabled={!selectedReg}
-                  className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
-                  title="Label preset"
-                >
-                  <option value="blank">Blank</option>
-                  <option value="alphabetic">Alphabetic</option>
-                  <option value="numeric">Numeric</option>
-                  <option value="ups">UPS</option>
-                </select>
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
+                  Labels preset
+                  <Shield size={12} className="text-amber-500" title="Super admin only" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={editable.labelPreset ?? defaultPresetForType(selectedType)}
+                    onChange={(e) => {
+                      const newValue = e.target.value as AirframeLabelPreset;
+                      if (!isSuperAdmin) {
+                        e.preventDefault();
+                        e.target.value = editable.labelPreset ?? defaultPresetForType(selectedType);
+                        return;
+                      }
+                      setPasswordPrompt({
+                        show: true,
+                        title: 'Change Labels Preset',
+                        message: 'Changing the labels preset will reset all position and station labels for this registration.',
+                        onConfirm: () => {
+                          applyLabelPresetLocal(newValue);
+                          setPasswordPrompt(null);
+                        },
+                      });
+                    }}
+                    disabled={!selectedReg}
+                    className={`mt-1 border border-slate-700 rounded px-2 py-2 text-xs ${
+                      isSuperAdmin
+                        ? 'bg-slate-800 text-white cursor-pointer'
+                        : 'bg-slate-900 text-slate-600 cursor-not-allowed'
+                    }`}
+                    title={isSuperAdmin ? 'Label preset' : 'Super admin only - Contact LoadMasterProAI.com'}
+                  >
+                    <option value="blank">Blank</option>
+                    <option value="alphabetic">Alphabetic</option>
+                    <option value="numeric">Numeric</option>
+                    <option value="ups">UPS</option>
+                  </select>
+                </div>
               </div>
               <div className="flex flex-col">
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Aircraft type</div>
-                <select
-                  value={selectedType}
-                  onChange={(e) => setAircraftTypeForLayout(e.target.value)}
-                  disabled={!selectedReg}
-                  className="mt-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white"
-                  title="Aircraft type (controls slot set + diagram layout)"
-                >
-                  {getAvailableAircraftTypes().map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-2">
+                  Aircraft type
+                  <Shield size={12} className="text-amber-500" title="Super admin only" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={selectedType}
+                    onChange={(e) => {
+                      const newType = e.target.value;
+                      if (!isSuperAdmin) {
+                        e.preventDefault();
+                        e.target.value = selectedType;
+                        return;
+                      }
+                      setPasswordPrompt({
+                        show: true,
+                        title: 'Change Aircraft Type',
+                        message: '⚠️ WARNING: Changing aircraft type will completely reset ALL position data, arms, constraints, and door configurations for this registration. This action cannot be undone. Only proceed if you are reconfiguring this tail number.',
+                        onConfirm: () => {
+                          setAircraftTypeForLayout(newType);
+                          setPasswordPrompt(null);
+                        },
+                      });
+                    }}
+                    disabled={!selectedReg}
+                    className={`mt-1 border border-slate-700 rounded px-2 py-2 text-xs ${
+                      isSuperAdmin
+                        ? 'bg-slate-800 text-white cursor-pointer'
+                        : 'bg-slate-900 text-slate-600 cursor-not-allowed'
+                    }`}
+                    title={
+                      isSuperAdmin
+                        ? 'Aircraft type (controls slot set + diagram layout)'
+                        : 'Super admin only - Contact LoadMasterProAI.com'
+                    }
+                  >
+                    {getAvailableAircraftTypes().map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {!isSuperAdmin && (
+                  <p className="mt-1 text-[9px] text-slate-600">
+                    To change, contact <span className="text-amber-400 font-bold">LoadMasterProAI.com</span>
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -2106,6 +2175,17 @@ const AirframeLayoutsPanel: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Password Prompt Modal */}
+      {passwordPrompt && (
+        <PasswordPromptModal
+          title={passwordPrompt.title}
+          message={passwordPrompt.message}
+          contactInfo="LoadMasterProAI.com"
+          onConfirm={passwordPrompt.onConfirm}
+          onCancel={() => setPasswordPrompt(null)}
+        />
+      )}
     </div>
   );
 };

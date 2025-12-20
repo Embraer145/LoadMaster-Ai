@@ -7,4 +7,5 @@ export * from './flightPlanRepository';
 export * from './loadPlanRepository';
 export * from './auditRepository';
 export * from './airframeLayoutRepository';
+export * from './aircraftTypeTemplateRepository';
 

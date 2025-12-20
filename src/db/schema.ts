@@ -8,7 +8,7 @@
 /**
  * Schema version for migrations
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * All table creation SQL statements
@@ -92,6 +92,24 @@ CREATE TABLE IF NOT EXISTS airframe_layouts (
 
 CREATE INDEX IF NOT EXISTS idx_airframe_layouts_registration ON airframe_layouts(registration);
 CREATE INDEX IF NOT EXISTS idx_airframe_layouts_operator ON airframe_layouts(operator_id);
+
+-- -----------------------------------------------------------------------------
+-- Aircraft Type Templates (Master Templates)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS aircraft_type_templates (
+  id TEXT PRIMARY KEY,
+  type_code TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  template_json TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  is_system_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  created_by TEXT,
+  updated_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_aircraft_type_templates_code ON aircraft_type_templates(type_code);
 
 -- -----------------------------------------------------------------------------
 -- Flight Plans
